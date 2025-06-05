@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shield Configuration Calculator</title>
+    
+    <!-- Bulma CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="shield-utility">
+        <!-- Header -->
+        <section class="hero is-dark is-small">
+            <div class="hero-body" style="padding: 1.5rem 0;">
+                <div class="container">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center;">
+                            <img src="images/re2.png" alt="RE2 Logo" style="height: 40px; margin-right: 1rem;">
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <img src="images/shield-generator.png" alt="Shield" style="height: 32px; margin-right: 0.75rem;">
+                            <h1 class="title is-3" style="margin: 0; color: #ffffff;">CV Shield Utility</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Mode Switcher and Tagline -->
+        <section class="section" style="padding: 2rem 0 1rem 0; background-color: #1a1a1a;">
+            <div class="container">
+                <!-- Mode Switcher -->
+                <div class="mode-switcher">
+                    <div class="mode-buttons">
+                        <button class="mode-button is-active" data-mode="value-to-component">
+                            <span class="icon"><i class="fas fa-calculator"></i></span>
+                            <span>Shield Calculator</span>
+                        </button>
+                        <button class="mode-button" data-mode="component-to-value">
+                            <span class="icon"><i class="fas fa-search"></i></span>
+                            <span>Shield Explorer</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Dynamic Tagline -->
+                <div class="has-text-centered">
+                    <p id="mode-tagline" class="subtitle is-6" style="color: #b5b5b5; margin-top: 1rem;">
+                        Find the most CPU-efficient configuration for your target shield values
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <section class="section">
+            <div class="container">
+                <!-- Value to Component Mode -->
+                <div id="value-to-component-mode" class="mode-content is-active">
+                    <div class="columns">
+                        <!-- Left Column - Inputs -->
+                        <div class="column is-4">
+                            <!-- Target Values -->
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-crosshairs"></i> Target Values
+                                </h2>
+                                <div class="field">
+                                    <label class="label">Desired Capacity (HP)</label>
+                                    <div class="control has-icons-left">
+                                        <input class="input" type="number" id="target-capacity" min="0" step="1000" placeholder="e.g. 50000">
+                                        <span class="icon is-left">
+                                            <i class="fas fa-heart"></i>
+                                        </span>
+                                    </div>
+                                    <p class="help">Will find most CPU-efficient config with at least 95% of this target</p>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Desired Recharge (HP/s)</label>
+                                    <div class="control has-icons-left">
+                                        <input class="input" type="number" id="target-recharge" min="0" step="100" placeholder="e.g. 1000">
+                                        <span class="icon is-left">
+                                            <i class="fas fa-bolt"></i>
+                                        </span>
+                                    </div>
+                                    <p class="help">Will find most CPU-efficient config with at least 95% of this target</p>
+                                </div>
+                            </div>
+
+                            <!-- Existing Blocks -->
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <img src="images/steel-block.png" alt="Block" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Existing Blocks
+                                </h2>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/steel-block.png" alt="Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Steel Blocks (1 HP each)
+                                    </label>
+                                    <div class="control">
+                                        <input class="input block-input" type="number" id="steel-blocks" min="0" value="0" data-capacity="1">
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/hardened-steel-block.png" alt="Hardened Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Hardened Steel Blocks (2 HP each)
+                                    </label>
+                                    <div class="control">
+                                        <input class="input block-input" type="number" id="hardened-steel-blocks" min="0" value="0" data-capacity="2">
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/combat-steel-block.png" alt="Combat Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Combat Steel Blocks (4 HP each)
+                                    </label>
+                                    <div class="control">
+                                        <input class="input block-input" type="number" id="combat-steel-blocks" min="0" value="0" data-capacity="4">
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/xenosteel-block.png" alt="XenoSteel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        XenoSteel Blocks (7 HP each)
+                                    </label>
+                                    <div class="control">
+                                        <input class="input block-input" type="number" id="xeno-steel-blocks" min="0" value="0" data-capacity="7">
+                                    </div>
+                                </div>
+                                <div class="notification is-info is-light">
+                                    <strong>Total Block Capacity:</strong> <span id="total-block-capacity">0</span> HP
+                                </div>
+                            </div>
+
+                            <!-- Crew -->
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <img src="images/shield-technician.png" alt="Crew" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Crew
+                                </h2>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/shield-technician.png" alt="Shield Technician" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Shield Technicians (Max: 16)
+                                    </label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="existing-shield-technicians" class="crew-input-calc">
+                                                <option value="0">0</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                                <option value="6">6</option>
+                                                <option value="7">7</option>
+                                                <option value="8">8</option>
+                                                <option value="9">9</option>
+                                                <option value="10">10</option>
+                                                <option value="11">11</option>
+                                                <option value="12">12</option>
+                                                <option value="13">13</option>
+                                                <option value="14">14</option>
+                                                <option value="15">15</option>
+                                                <option value="16">16</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="help">Each technician provides +2,000 HP capacity and +75 HP/s recharge</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Middle Column - Constraints -->
+                        <div class="column is-4">
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-sliders-h"></i> Constraints
+                                </h2>
+                                <div class="field">
+                                    <label class="label">CPU Limit</label>
+                                    <div class="control has-icons-left">
+                                        <input class="input" type="number" id="cpu-limit" min="0" placeholder="No limit">
+                                        <span class="icon is-left">
+                                            <i class="fas fa-microchip"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Power Limit (W)</label>
+                                    <div class="control has-icons-left">
+                                        <input class="input" type="number" id="power-limit" min="0" placeholder="No limit">
+                                        <span class="icon is-left">
+                                            <i class="fas fa-plug"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Max Advanced Extenders</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-advanced-extenders">
+                                                <option value="4">4 (Default)</option>
+                                                <option value="3">3</option>
+                                                <option value="2">2</option>
+                                                <option value="1">1</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Max Improved Extenders</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-improved-extenders">
+                                                <option value="6">6 (Default)</option>
+                                                <option value="5">5</option>
+                                                <option value="4">4</option>
+                                                <option value="3">3</option>
+                                                <option value="2">2</option>
+                                                <option value="1">1</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Max Basic Extenders</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-basic-extenders">
+                                                <option value="8">8 (Default)</option>
+                                                <option value="7">7</option>
+                                                <option value="6">6</option>
+                                                <option value="5">5</option>
+                                                <option value="4">4</option>
+                                                <option value="3">3</option>
+                                                <option value="2">2</option>
+                                                <option value="1">1</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Max Small Fusion Reactors</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-small-reactors">
+                                                <option value="4">4 (Default)</option>
+                                                <option value="3">3</option>
+                                                <option value="2">2</option>
+                                                <option value="1">1</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Max Large Fusion Reactors</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-large-reactors">
+                                                <option value="2">2 (Default)</option>
+                                                <option value="1">1</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button id="calculate-btn" class="button is-primary is-fullwidth is-medium">
+                                    <span class="icon">
+                                        <i class="fas fa-cogs"></i>
+                                    </span>
+                                    <span>Calculate Optimal Configuration</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Right Column - Results -->
+                        <div class="column is-4">
+                            <!-- Optimal Configuration Stats -->
+                            <div id="calculator-stats-box" class="box is-hidden">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-trophy"></i> Optimal Configuration
+                                </h2>
+                                <div class="stat-grid">
+                                    <div class="stat-item">
+                                        <p class="heading">Total Capacity</p>
+                                        <p class="title" id="calc-capacity">0 HP</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">Recharge Rate</p>
+                                        <p class="title" id="calc-recharge">0 HP/s</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">CPU Usage</p>
+                                        <p class="title" id="calc-cpu">0</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">Net Power</p>
+                                        <p class="title" id="calc-power">0 W</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Visual Chart -->
+                                <div class="mt-5">
+                                    <canvas id="calculatorStatsChart" width="400" height="300"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Required Components -->
+                            <div id="required-components-box" class="box is-hidden">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-list"></i> Required Components
+                                </h2>
+                                <div id="required-components-content">
+                                    <!-- Required components will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <!-- Applied Constraints -->
+                            <div id="applied-constraints-box" class="box is-hidden">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-sliders-h"></i> Applied Constraints
+                                </h2>
+                                <div id="applied-constraints-content">
+                                    <!-- Applied constraints will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Component to Value Mode -->
+                <div id="component-to-value-mode" class="mode-content">
+                    <div class="columns">
+                        <!-- Left Column - Component Selection -->
+                        <div class="column is-8">
+                            <!-- Shield Generator -->
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <img src="images/shield-generator.png" alt="Shield Generator" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Shield Generator
+                                </h2>
+                                <div class="field">
+                                    <div class="control">
+                                        <div class="select is-fullwidth is-medium">
+                                            <select id="shield-generator-select">
+                                                <option value="none">None</option>
+                                                <option value="compact">Compact Shield Generator</option>
+                                                <option value="standard">Shield Generator</option>
+                                                <option value="advanced">Advanced Shield Generator</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Generators -->
+                            <div class="box" id="generators-box">
+                                <h2 class="title is-4">
+                                    <img src="images/basic-large-generator.png" alt="Generator" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Generators
+                                </h2>
+                                <div class="columns is-multiline">
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">Basic Large Generators</label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="basic-large-generators" class="generator-input" data-generator-type="basicLarge">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                        <option value="5">5</option>
+                                                        <option value="6">6</option>
+                                                        <option value="7">7</option>
+                                                        <option value="8">8</option>
+                                                        <option value="9">9</option>
+                                                        <option value="10">10</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">Improved Large Generators</label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="improved-large-generators" class="generator-input" data-generator-type="improvedLarge">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                        <option value="5">5</option>
+                                                        <option value="6">6</option>
+                                                        <option value="7">7</option>
+                                                        <option value="8">8</option>
+                                                        <option value="9">9</option>
+                                                        <option value="10">10</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">Advanced Large Generators</label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="advanced-large-generators" class="generator-input" data-generator-type="advancedLarge">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                        <option value="5">5</option>
+                                                        <option value="6">6</option>
+                                                        <option value="7">7</option>
+                                                        <option value="8">8</option>
+                                                        <option value="9">9</option>
+                                                        <option value="10">10</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">Small Fusion Reactors (Max: 4)</label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="small-reactor-count">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">Large Fusion Reactors (Max: 2)</label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="large-reactor-count">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Shield Extenders -->
+                            <div class="box" id="extenders-box">
+                                <h2 class="title is-4">
+                                    <img src="images/advanced-shield-extender.png" alt="Shield Extender" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Shield Extenders
+                                </h2>
+                                
+                                <!-- Advanced Extenders -->
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/advanced-shield-extender.png" alt="Advanced Extender" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Advanced Tier (Limit: <span id="advanced-limit">4</span>)
+                                    </label>
+                                    <div class="columns">
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Advanced Capacitors</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="advanced-capacitors" class="extender-select" data-tier="advanced" data-type="capacitor">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Advanced Chargers</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="advanced-chargers" class="extender-select" data-tier="advanced" data-type="charger">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Improved Extenders -->
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/improved-shield-extender.png" alt="Improved Extender" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Improved Tier (Limit: <span id="improved-limit">6</span>)
+                                    </label>
+                                    <div class="columns">
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Improved Capacitors</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="improved-capacitors" class="extender-select" data-tier="improved" data-type="capacitor">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Improved Chargers</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="improved-chargers" class="extender-select" data-tier="improved" data-type="charger">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Basic Extenders -->
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/basic-shield-extender.png" alt="Basic Extender" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Basic Tier (Limit: <span id="basic-limit">8</span>)
+                                    </label>
+                                    <div class="columns">
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Basic Capacitors</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="basic-capacitors" class="extender-select" data-tier="basic" data-type="capacitor">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="column">
+                                            <div class="field">
+                                                <label class="label is-small">Basic Chargers</label>
+                                                <div class="control">
+                                                    <div class="select is-fullwidth">
+                                                        <select id="basic-chargers" class="extender-select" data-tier="basic" data-type="charger">
+                                                            <!-- Options will be dynamically generated -->
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Blocks -->
+                            <div class="box" id="blocks-box">
+                                <h2 class="title is-4">
+                                    <img src="images/steel-block.png" alt="Block" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Blocks
+                                </h2>
+                                <div class="columns is-multiline">
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/steel-block.png" alt="Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Steel Blocks (1 HP each)
+                                            </label>
+                                            <div class="control">
+                                                <input class="input block-input-live" type="number" id="steel-blocks-live" min="0" value="0" data-capacity="1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/hardened-steel-block.png" alt="Hardened Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Hardened Steel Blocks (2 HP each)
+                                            </label>
+                                            <div class="control">
+                                                <input class="input block-input-live" type="number" id="hardened-steel-blocks-live" min="0" value="0" data-capacity="2">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/combat-steel-block.png" alt="Combat Steel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Combat Steel Blocks (4 HP each)
+                                            </label>
+                                            <div class="control">
+                                                <input class="input block-input-live" type="number" id="combat-steel-blocks-live" min="0" value="0" data-capacity="4">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/xenosteel-block.png" alt="XenoSteel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                XenoSteel Blocks (7 HP each)
+                                            </label>
+                                            <div class="control">
+                                                <input class="input block-input-live" type="number" id="xeno-steel-blocks-live" min="0" value="0" data-capacity="7">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Crew -->
+                            <div class="box" id="crew-box">
+                                <h2 class="title is-4">
+                                    <img src="images/shield-technician.png" alt="Crew" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Crew
+                                </h2>
+                                <div class="field">
+                                    <label class="label">
+                                        <img src="images/shield-technician.png" alt="Shield Technician" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                        Shield Technicians (Max: 16)
+                                    </label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="shield-technicians" class="crew-input">
+                                                <option value="0">0</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                                <option value="6">6</option>
+                                                <option value="7">7</option>
+                                                <option value="8">8</option>
+                                                <option value="9">9</option>
+                                                <option value="10">10</option>
+                                                <option value="11">11</option>
+                                                <option value="12">12</option>
+                                                <option value="13">13</option>
+                                                <option value="14">14</option>
+                                                <option value="15">15</option>
+                                                <option value="16">16</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="help">Each technician provides +2,000 HP capacity and +75 HP/s recharge</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column - Live Stats -->
+                        <div class="column is-4">
+                            <div class="box" id="live-stats-box">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h2 class="title is-4" style="margin-bottom: 0;">
+                                        <i class="fas fa-chart-line"></i> Configuration Stats
+                                    </h2>
+                                    <button class="button is-light is-small" onclick="window.shieldUtilityApp.ui.resetShieldExplorer()">
+                                        <span class="icon">
+                                            <i class="fas fa-undo"></i>
+                                        </span>
+                                        <span>Reset</span>
+                                    </button>
+                                </div>
+                                <div class="stat-grid">
+                                    <div class="stat-item">
+                                        <p class="heading">Total Capacity</p>
+                                        <p class="title" id="live-capacity">0 HP</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">Recharge Rate</p>
+                                        <p class="title" id="live-recharge">0 HP/s</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">CPU Usage</p>
+                                        <p class="title" id="live-cpu">0</p>
+                                    </div>
+                                    <div class="stat-item">
+                                        <p class="heading">Net Power</p>
+                                        <p class="title" id="live-power">0 W</p>
+                                    </div>
+                                </div>
+                                <div id="warnings" class="warnings mt-4">
+                                    <!-- Warnings will be displayed here -->
+                                </div>
+                                
+                                <!-- Visual Chart -->
+                                <div class="mt-5">
+                                    <canvas id="statsChart" width="400" height="300"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Current Build Inventory -->
+                            <div class="box" id="build-inventory">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-list"></i> Components
+                                </h2>
+                                <div id="inventory-content">
+                                    <div class="notification is-info is-light">
+                                        <p>Select components to see your build here</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/data.js"></script>
+    <script src="js/calculator.js"></script>
+    <script src="js/optimizer.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
