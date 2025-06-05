@@ -239,19 +239,9 @@ const components = {
 
 // Utility functions for component data
 const ComponentUtils = {
-    // Get all extenders for a specific tier
-    getExtendersForTier(tier) {
-        return components.extenders[tier] || {};
-    },
-    
     // Get component by type and id
     getComponent(type, id) {
         return components[type] && components[type][id] ? components[type][id] : null;
-    },
-    
-    // Get all components of a specific type
-    getComponentsByType(type) {
-        return components[type] || {};
     },
     
     // Calculate efficiency score for sorting
@@ -286,6 +276,3 @@ const ComponentUtils = {
         return components.tierLimits[tier] || 0;
     }
 };
-
-// Create alias for backward compatibility
-const ShieldComponents = components;

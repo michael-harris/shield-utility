@@ -3,25 +3,90 @@ class ShieldOptimizer {
     constructor(calculator) {
         this.calculator = calculator;
         this.tolerance = 0.05; // 5% tolerance for target matching
+        this.preCalculationEngine = null;
+        this.initializePreCalculation();
+    }
+    
+    // Initialize pre-calculation engine if available
+    async initializePreCalculation() {
+        try {
+            if (typeof PreCalculationEngine !== 'undefined' && typeof SHIELD_OPTIMIZATION_CACHE !== 'undefined') {
+                this.preCalculationEngine = new PreCalculationEngine(this.calculator);
+                
+                // Load from pre-calculated cache
+                this.preCalculationEngine.coreConfigurations = SHIELD_OPTIMIZATION_CACHE.coreConfigurations;
+                this.preCalculationEngine.buildLookupTable();
+                this.preCalculationEngine.isReady = true;
+                
+            }
+        } catch (error) {
+            this.preCalculationEngine = null;
+        }
     }
     
     // Main optimization function
-    optimize(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}) {
-        // Check if targets are achievable
-        const achievability = this.calculator.isTargetAchievable(targetCapacity, targetRecharge, {
-            ...constraints,
-            blocks: existingBlocks,
-            crew: existingCrew
-        });
-        
-        if (!achievability.capacityAchievable || !achievability.rechargeAchievable) {
-            // Return immediate failure for impossible targets
-            return {
-                success: false,
-                reason: 'impossible',
-                maxPossible: achievability.maxPossible
-            };
+    async optimize(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}, strategy = 'cpu-efficiency') {
+        // Try fast optimization first if available
+        if (window.fastOptimizer) {
+            try {
+                const fastResult = await window.fastOptimizer.optimize(
+                    targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew, strategy
+                );
+                
+                if (fastResult && fastResult.success) {
+                    return fastResult;
+                }
+            } catch (error) {
+            }
         }
+        
+        // Try old pre-calculation engine if available
+        if (this.preCalculationEngine && this.preCalculationEngine.isReady) {
+            try {
+                const fastResult = this.preCalculationEngine.fastOptimize(
+                    strategy, constraints, targetCapacity, targetRecharge, existingBlocks, existingCrew
+                );
+                
+                if (fastResult && fastResult.success) {
+                    return fastResult;
+                }
+            } catch (error) {
+            }
+        }
+        
+        // Fall back to standard optimization methods
+        let result;
+        switch (strategy) {
+            case 'max-balanced':
+                result = this.optimizeMaxBalanced(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                break;
+            case 'max-capacity':
+                result = this.optimizeMaxCapacity(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                break;
+            case 'max-recharge':
+                result = this.optimizeMaxRecharge(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                break;
+            case 'cpu-efficiency':
+            default:
+                result = this.optimizeCPUEfficiency(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                break;
+        }
+        
+        // Only validate for truly invalid cases (recharge exactly 0), allow low but positive recharge
+        if (result && result.success && result.stats.recharge <= 0) {
+            return { success: false, reason: 'invalid_recharge_rate' };
+        }
+        
+        return result;
+    }
+    
+    
+    // CPU-Efficiency strategy (original logic)
+    optimizeCPUEfficiency(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}) {
+        // Apply fusion reactor limits for this strategy
+        const modifiedConstraints = { ...constraints };
+        modifiedConstraints.maxSmallReactors = Math.min(modifiedConstraints.maxSmallReactors || 4, 2);
+        modifiedConstraints.maxLargeReactors = Math.min(modifiedConstraints.maxLargeReactors || 2, 1);
         
         // Determine which strategy to use based on targets
         const strategy = this.determineOptimalStrategy(targetCapacity, targetRecharge, existingBlocks, existingCrew);
@@ -30,24 +95,24 @@ class ShieldOptimizer {
         
         try {
             if (strategy === 'High Capacity') {
-                bestResult = this.optimizeHighCapacity(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                bestResult = this.optimizeHighCapacity(targetCapacity, targetRecharge, modifiedConstraints, existingBlocks, existingCrew);
             } else if (strategy === 'High Recharge') {
-                bestResult = this.optimizeHighRecharge(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                bestResult = this.optimizeHighRecharge(targetCapacity, targetRecharge, modifiedConstraints, existingBlocks, existingCrew);
             } else {
-                bestResult = this.optimizeBalanced(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+                bestResult = this.optimizeBalanced(targetCapacity, targetRecharge, modifiedConstraints, existingBlocks, existingCrew);
             }
             
             if (bestResult && bestResult.success) {
                 bestResult.strategy = strategy;
             }
         } catch (error) {
-            console.warn('Optimization strategy failed:', error);
+            // Optimization strategy failed
         }
         
         return bestResult || {
             success: false,
             reason: 'no_solution',
-            alternatives: this.suggestAlternatives(targetCapacity, targetRecharge, achievability.maxPossible)
+            message: 'No valid configuration found that meets the specified targets and constraints.'
         };
     }
     
@@ -58,10 +123,10 @@ class ShieldOptimizer {
         // Calculate what's needed from components
         const neededCapacity = Math.max(0, targetCapacity - blockCapacity);
         
-        // Get theoretical maximums for comparison
+        // Get theoretical maximums for comparison using CPU-Efficiency reactor limits
         const maxCapacityConfig = {
             generator: 'advanced',
-            reactors: { small: 4, large: 2 },
+            reactors: { small: 2, large: 1 }, // Use CPU-Efficiency limits
             extenders: {
                 advanced: { capacitor: 4, charger: 0 },
                 improved: { capacitor: 6, charger: 0 },
@@ -73,7 +138,7 @@ class ShieldOptimizer {
         
         const maxRechargeConfig = {
             generator: 'advanced',
-            reactors: { small: 4, large: 2 },
+            reactors: { small: 2, large: 1 }, // Use CPU-Efficiency limits
             extenders: {
                 advanced: { capacitor: 0, charger: 4 },
                 improved: { capacitor: 0, charger: 6 },
@@ -113,8 +178,8 @@ class ShieldOptimizer {
         let bestConfig = null;
         let bestScore = -1;
         
-        // Try all generator types to find the most efficient
-        const generatorTypes = ['compact', 'standard', 'advanced'];
+        // Try all generator types to find the most efficient (or just the constrained one)
+        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : ['compact', 'standard', 'advanced'];
         
         for (const generatorType of generatorTypes) {
             // Try with and without reactors (unless no-fusion is checked)
@@ -123,14 +188,29 @@ class ShieldOptimizer {
             if (maxSmallReactors > 0 || maxLargeReactors > 0) {
                 for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
                     for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
+                        // For strategies with fusion limits (2 small, 1 large), don't mix types
+                        if (maxSmallReactors === 2 && maxLargeReactors === 1 && 
+                            smallReactors > 0 && largeReactors > 0) {
+                            continue; // Skip combinations that use both types
+                        }
                         reactorConfigs.push([smallReactors, largeReactors]);
                     }
                 }
             }
             
             for (const [smallReactors, largeReactors] of reactorConfigs) {
-                // Try all extender combinations
-                for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                // Try power generator combinations (Advanced and Improved only)
+                // Limit to reasonable numbers to avoid excessive computation
+                const maxPowerGens = 4;
+                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
+                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
+                        // Skip if both reactors and generators are present (redundant)
+                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
+                            continue;
+                        }
+                        
+                        // Try all extender combinations
+                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
                     for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
                         for (let impCap = 0; impCap <= maxImproved; impCap++) {
                             for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
@@ -140,6 +220,10 @@ class ShieldOptimizer {
                                         const config = {
                                             generator: generatorType,
                                             reactors: { small: smallReactors, large: largeReactors },
+                                            powerGenerators: {
+                                                advancedLarge: advancedGens,
+                                                improvedLarge: improvedGens
+                                            },
                                             extenders: {
                                                 advanced: { capacitor: advCap, charger: advChg },
                                                 improved: { capacitor: impCap, charger: impChg },
@@ -155,12 +239,51 @@ class ShieldOptimizer {
                                         const meetsCapacity = !targetCapacity || this.isWithinTolerance(stats.capacity, targetCapacity);
                                         const meetsRecharge = !targetRecharge || this.isWithinTolerance(stats.recharge, targetRecharge);
                                         
+                                        
                                         if (meetsCapacity && meetsRecharge) {
-                                            // Check constraints
+                                            // Check constraints and power utilization rules
                                             const validation = this.calculator.validateConfiguration(config, constraints);
-                                            if (validation.valid || validation.warnings.length === 0) {
-                                                // Score primarily on CPU efficiency (lower CPU = higher score)
-                                                const score = 1000000 - stats.cpu;
+                                            
+                                            // Apply 50% power constraint for generator-based builds
+                                            const usesGenerators = (advancedGens > 0 || improvedGens > 0);
+                                            const usesFusion = (smallReactors > 0 || largeReactors > 0);
+                                            let powerUtilizationValid = true;
+                                            
+                                            if (usesGenerators && !usesFusion) {
+                                                const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                
+                                                // If stats.power > 0, generators can't meet the demand - invalid
+                                                if (stats.power > 0) {
+                                                    powerUtilizationValid = false;
+                                                } else {
+                                                    // stats.power <= 0 means we have excess power
+                                                    // Shield power requirement = totalPowerGeneration - abs(stats.power)
+                                                    const shieldPowerRequirement = totalPowerGeneration + stats.power; // stats.power is negative
+                                                    const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                    powerUtilizationValid = utilizationPercent <= 0.5;
+                                                }
+                                            }
+                                            
+                                            if ((validation.valid || validation.warnings.length === 0) && powerUtilizationValid) {
+                                                // Enhanced scoring: prioritize CPU efficiency with power considerations
+                                                let score = 1000000 - stats.cpu; // Base CPU efficiency
+                                                
+                                                // Bonus for power-positive configurations
+                                                if (stats.power <= 0) {
+                                                    score += Math.abs(stats.power) / 1000; // Small bonus for excess power
+                                                }
+                                                
+                                                // Additional bonus for efficient power utilization in generator builds
+                                                if (usesGenerators && !usesFusion && stats.power <= 0) {
+                                                    const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                    const shieldPowerRequirement = totalPowerGeneration + stats.power; // stats.power is negative
+                                                    const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                    // Bonus for using less than 50% of power capacity (headroom is good)
+                                                    if (utilizationPercent <= 0.5) {
+                                                        score += (0.5 - utilizationPercent) * 10000;
+                                                    }
+                                                }
+                                                
                                                 if (score > bestScore) {
                                                     bestScore = score;
                                                     bestConfig = { config, stats, validation };
@@ -173,6 +296,8 @@ class ShieldOptimizer {
                         }
                     }
                 }
+            }
+        }
             }
         }
         
@@ -210,8 +335,8 @@ class ShieldOptimizer {
         let bestConfig = null;
         let bestScore = -1;
         
-        // Try all generator types to find the most efficient
-        const generatorTypes = ['compact', 'standard', 'advanced'];
+        // Try all generator types to find the most efficient (or just the constrained one)
+        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : ['compact', 'standard', 'advanced'];
         
         for (const generatorType of generatorTypes) {
             // Try with and without reactors (unless no-fusion is checked)
@@ -220,14 +345,29 @@ class ShieldOptimizer {
             if (maxSmallReactors > 0 || maxLargeReactors > 0) {
                 for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
                     for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
+                        // For strategies with fusion limits (2 small, 1 large), don't mix types
+                        if (maxSmallReactors === 2 && maxLargeReactors === 1 && 
+                            smallReactors > 0 && largeReactors > 0) {
+                            continue; // Skip combinations that use both types
+                        }
                         reactorConfigs.push([smallReactors, largeReactors]);
                     }
                 }
             }
             
             for (const [smallReactors, largeReactors] of reactorConfigs) {
-                // Try all extender combinations
-                for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                // Try power generator combinations (Advanced and Improved only)
+                // Limit to reasonable numbers to avoid excessive computation
+                const maxPowerGens = 4;
+                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
+                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
+                        // Skip if both reactors and generators are present (redundant)
+                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
+                            continue;
+                        }
+                        
+                        // Try all extender combinations
+                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
                     for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
                         for (let impCap = 0; impCap <= maxImproved; impCap++) {
                             for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
@@ -237,6 +377,10 @@ class ShieldOptimizer {
                                         const config = {
                                             generator: generatorType,
                                             reactors: { small: smallReactors, large: largeReactors },
+                                            powerGenerators: {
+                                                advancedLarge: advancedGens,
+                                                improvedLarge: improvedGens
+                                            },
                                             extenders: {
                                                 advanced: { capacitor: advCap, charger: advChg },
                                                 improved: { capacitor: impCap, charger: impChg },
@@ -253,10 +397,31 @@ class ShieldOptimizer {
                                         const meetsRecharge = !targetRecharge || this.isWithinTolerance(stats.recharge, targetRecharge);
                                         
                                         if (meetsCapacity && meetsRecharge) {
-                                            // Check constraints
+                                            // Check constraints and power utilization rules
                                             const validation = this.calculator.validateConfiguration(config, constraints);
-                                            if (validation.valid || validation.warnings.length === 0) {
-                                                // Priority-based scoring
+                                            
+                                            // Apply 50% power constraint for generator-based builds
+                                            const usesGenerators = (advancedGens > 0 || improvedGens > 0);
+                                            const usesFusion = (smallReactors > 0 || largeReactors > 0);
+                                            let powerUtilizationValid = true;
+                                            
+                                            if (usesGenerators && !usesFusion) {
+                                                const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                
+                                                // If stats.power > 0, generators can't meet the demand - invalid
+                                                if (stats.power > 0) {
+                                                    powerUtilizationValid = false;
+                                                } else {
+                                                    // stats.power <= 0 means we have excess power
+                                                    // Shield power requirement = totalPowerGeneration - abs(stats.power)
+                                                    const shieldPowerRequirement = totalPowerGeneration + stats.power; // stats.power is negative
+                                                    const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                    powerUtilizationValid = utilizationPercent <= 0.5;
+                                                }
+                                            }
+                                            
+                                            if ((validation.valid || validation.warnings.length === 0) && powerUtilizationValid) {
+                                                // Enhanced priority-based scoring: CPU efficiency with power considerations
                                                 let score = 1000000 - stats.cpu; // Base CPU efficiency
                                                 
                                                 if (priority === 'capacity') {
@@ -279,11 +444,28 @@ class ShieldOptimizer {
                                                     }
                                                 }
                                                 
+                                                // Bonus for power-positive configurations
+                                                if (stats.power <= 0) {
+                                                    score += Math.abs(stats.power) / 1000; // Small bonus for excess power
+                                                }
+                                                
+                                                // Additional bonus for efficient power utilization in generator builds
+                                                if (usesGenerators && !usesFusion && stats.power <= 0) {
+                                                    const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                    const shieldPowerRequirement = totalPowerGeneration + stats.power; // stats.power is negative
+                                                    const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                    // Bonus for using less than 50% of power capacity (headroom is good)
+                                                    if (utilizationPercent <= 0.5) {
+                                                        score += (0.5 - utilizationPercent) * 10000;
+                                                    }
+                                                }
+                                                
                                                 if (score > bestScore) {
                                                     bestScore = score;
                                                     bestConfig = { config, stats, validation };
                                                 }
                                             }
+                                        }
                                         }
                                     }
                                 }
@@ -292,6 +474,7 @@ class ShieldOptimizer {
                     }
                 }
             }
+        }
         }
         
         if (bestConfig) {
@@ -307,175 +490,6 @@ class ShieldOptimizer {
         return { success: false, reason: 'no_valid_configuration' };
     }
     
-    // Capacity-first optimization
-    optimizeCapacityFirst(targetCapacity, targetRecharge, constraints, existingBlocks) {
-        const config = this.calculator.createEmptyConfiguration();
-        config.blocks = { ...existingBlocks };
-        
-        const blockCapacity = this.calculator.calculateBlockCapacity(existingBlocks);
-        const remainingCapacity = Math.max(0, targetCapacity - blockCapacity);
-        
-        // Start with best generator for capacity
-        config.generator = this.selectGeneratorForCapacity(remainingCapacity, constraints);
-        
-        // Add capacitors first (most efficient for capacity)
-        const capacitorEfficiency = this.calculator.getComponentEfficiency('capacitor', true);
-        
-        for (const tierData of capacitorEfficiency) {
-            const tier = tierData.tier;
-            const maxCount = this.calculator.components.tierLimits[tier];
-            
-            const currentStats = this.calculator.calculateStats(config);
-            const neededCapacity = targetCapacity - currentStats.capacity;
-            
-            if (neededCapacity <= 0) break;
-            
-            const optimalCount = Math.min(
-                maxCount,
-                Math.ceil(neededCapacity / tierData.capacity)
-            );
-            
-            config.extenders[tier].capacitor = optimalCount;
-        }
-        
-        // Then adjust with chargers if recharge is too low
-        this.adjustRechargeWithChargers(config, targetRecharge, constraints);
-        
-        const stats = this.calculator.calculateStats(config);
-        
-        if (this.isWithinTolerance(stats.capacity, targetCapacity) && 
-            this.isWithinTolerance(stats.recharge, targetRecharge)) {
-            return {
-                success: true,
-                configuration: config,
-                stats: stats,
-                strategy: 'capacity_first'
-            };
-        }
-        
-        return { success: false, reason: 'targets_not_met', stats: stats };
-    }
-    
-    // Recharge-first optimization
-    optimizeRechargeFirst(targetCapacity, targetRecharge, constraints, existingBlocks) {
-        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 4;
-        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 2;
-        
-        const config = this.calculator.createEmptyConfiguration();
-        config.blocks = { ...existingBlocks };
-        
-        // Start with best generator for recharge
-        config.generator = this.selectGeneratorForRecharge(targetRecharge, constraints);
-        
-        // Add reactors if needed and allowed
-        if (maxSmallReactors > 0 || maxLargeReactors > 0) {
-            this.addOptimalReactors(config, targetRecharge, constraints);
-        }
-        
-        // Add chargers first
-        const chargerEfficiency = this.calculator.getComponentEfficiency('charger', false);
-        
-        for (const tierData of chargerEfficiency) {
-            const tier = tierData.tier;
-            const maxCount = this.calculator.components.tierLimits[tier];
-            
-            const currentStats = this.calculator.calculateStats(config);
-            const neededRecharge = targetRecharge - currentStats.recharge;
-            
-            if (neededRecharge <= 0) break;
-            
-            const optimalCount = Math.min(
-                maxCount,
-                Math.ceil(neededRecharge / tierData.recharge)
-            );
-            
-            config.extenders[tier].charger = optimalCount;
-        }
-        
-        // Then adjust with capacitors if capacity is too low
-        this.adjustCapacityWithCapacitors(config, targetCapacity, constraints);
-        
-        const stats = this.calculator.calculateStats(config);
-        
-        if (this.isWithinTolerance(stats.capacity, targetCapacity) && 
-            this.isWithinTolerance(stats.recharge, targetRecharge)) {
-            return {
-                success: true,
-                configuration: config,
-                stats: stats,
-                strategy: 'recharge_first'
-            };
-        }
-        
-        return { success: false, reason: 'targets_not_met', stats: stats };
-    }
-    
-    // CPU efficiency optimization
-    optimizeEfficiency(targetCapacity, targetRecharge, constraints, existingBlocks) {
-        const config = this.calculator.createEmptyConfiguration();
-        config.blocks = { ...existingBlocks };
-        
-        // Select most CPU-efficient generator
-        config.generator = this.selectMostEfficientGenerator(constraints);
-        
-        // Use most efficient components first
-        const allExtenders = [];
-        
-        // Collect all extenders with efficiency scores
-        for (const tier in this.calculator.components.extenders) {
-            const capacitor = this.calculator.components.extenders[tier].capacitor;
-            const charger = this.calculator.components.extenders[tier].charger;
-            
-            allExtenders.push({
-                type: 'capacitor',
-                tier: tier,
-                component: capacitor,
-                efficiencyScore: capacitor.efficiency.capacity / (capacitor.cpu / 1000)
-            });
-            
-            allExtenders.push({
-                type: 'charger',
-                tier: tier,
-                component: charger,
-                efficiencyScore: charger.efficiency.recharge / (charger.cpu / 1000)
-            });
-        }
-        
-        // Sort by efficiency
-        allExtenders.sort((a, b) => b.efficiencyScore - a.efficiencyScore);
-        
-        // Add components in efficiency order
-        for (const extender of allExtenders) {
-            const currentStats = this.calculator.calculateStats(config);
-            
-            if (this.isWithinTolerance(currentStats.capacity, targetCapacity) && 
-                this.isWithinTolerance(currentStats.recharge, targetRecharge)) {
-                break;
-            }
-            
-            const tierLimit = this.calculator.components.tierLimits[extender.tier];
-            const currentTierCount = config.extenders[extender.tier].capacitor + 
-                                   config.extenders[extender.tier].charger;
-            
-            if (currentTierCount < tierLimit) {
-                config.extenders[extender.tier][extender.type]++;
-            }
-        }
-        
-        const stats = this.calculator.calculateStats(config);
-        
-        if (this.isWithinTolerance(stats.capacity, targetCapacity) && 
-            this.isWithinTolerance(stats.recharge, targetRecharge)) {
-            return {
-                success: true,
-                configuration: config,
-                stats: stats,
-                strategy: 'efficiency'
-            };
-        }
-        
-        return { success: false, reason: 'targets_not_met', stats: stats };
-    }
     
     // Helper functions
     selectOptimalGenerator(targetCapacity, targetRecharge, constraints) {
@@ -618,52 +632,11 @@ class ShieldOptimizer {
         }
     }
     
-    adjustRechargeWithChargers(config, targetRecharge, constraints) {
-        // Implementation for fine-tuning recharge with chargers
-        // This would replace some capacitors with chargers if needed
-    }
-    
-    adjustCapacityWithCapacitors(config, targetCapacity, constraints) {
-        // Implementation for fine-tuning capacity with capacitors
-        // This would replace some chargers with capacitors if needed
-    }
-    
     isWithinTolerance(actual, target) {
         if (!target) return true;
         // Allow going over, but must be at least 95% of target
         const minTarget = target * (1 - this.tolerance);
         return actual >= minTarget;
-    }
-    
-    scoreConfiguration(config, targetCapacity, targetRecharge, constraints) {
-        const stats = this.calculator.calculateStats(config);
-        const validation = this.calculator.validateConfiguration(config, constraints);
-        
-        if (!validation.valid && validation.warnings.length > 0) return -1;
-        
-        // Primary scoring: CPU efficiency (lower CPU = higher score)
-        // Use negative CPU so lower CPU gives higher score
-        let score = 1000000 - stats.cpu;
-        
-        // Small bonus for meeting targets exactly (but CPU is still primary)
-        if (targetCapacity && stats.capacity >= targetCapacity) {
-            score += 1000; // Small bonus for meeting capacity
-        }
-        
-        if (targetRecharge && stats.recharge >= targetRecharge) {
-            score += 1000; // Small bonus for meeting recharge
-        }
-        
-        // Small penalty for excessive over-achievement (waste)
-        if (targetCapacity && stats.capacity > targetCapacity * 1.2) {
-            score -= (stats.capacity - targetCapacity * 1.2) / 1000;
-        }
-        
-        if (targetRecharge && stats.recharge > targetRecharge * 1.2) {
-            score -= (stats.recharge - targetRecharge * 1.2) / 10;
-        }
-        
-        return score;
     }
     
     // Find best alternative when targets are impossible - maintain same ratio but scale down
@@ -755,5 +728,469 @@ class ShieldOptimizer {
         });
         
         return alternatives;
+    }
+    
+    // Add optimal power generators to meet power requirements with maximum CPU efficiency
+    addOptimalPowerGenerators(config, powerRequired) {
+        const newConfig = JSON.parse(JSON.stringify(config)); // Deep copy
+        
+        if (!newConfig.powerGenerators) {
+            newConfig.powerGenerators = {};
+        }
+        
+        // Initialize generator counts if not present (only Advanced and Improved)
+        const generators = ['improvedLarge', 'advancedLarge'];
+        generators.forEach(gen => {
+            if (!newConfig.powerGenerators[gen]) {
+                newConfig.powerGenerators[gen] = 0;
+            }
+        });
+        
+        let remainingPower = powerRequired;
+        
+        // Use most CPU efficient generators first
+        // Improved Large: 25000 power / 25000 CPU = 1.0 power per CPU  
+        // Advanced Large: 100000 power / 50000 CPU = 2.0 power per CPU
+        
+        // Start with Advanced Large (best ratio) but ensure we don't overprovision too much
+        if (remainingPower >= 50000) {
+            const advancedCount = Math.floor(remainingPower / 100000);
+            if (advancedCount > 0) {
+                newConfig.powerGenerators.advancedLarge += advancedCount;
+                remainingPower -= advancedCount * 100000;
+            }
+        }
+        
+        // Use Improved Large for remaining power
+        if (remainingPower > 0) {
+            const improvedCount = Math.ceil(remainingPower / 25000);
+            if (improvedCount > 0) {
+                newConfig.powerGenerators.improvedLarge += improvedCount;
+                remainingPower -= improvedCount * 25000;
+            }
+        }
+        
+        return newConfig;
+    }
+    
+    // Max Balanced strategy - find max capacity where chart percentages are within 10% of each other
+    optimizeMaxBalanced(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}) {
+        // Use full constraint limits for this strategy
+        const modifiedConstraints = { ...constraints };
+        
+        // First, determine maximum possible values within constraints
+        const maxPossible = this.calculateMaxPossibleStats(modifiedConstraints, existingBlocks, existingCrew);
+        
+        let bestConfig = null;
+        let bestScore = -1;
+        
+        const maxAdvanced = modifiedConstraints.maxAdvancedExtenders !== undefined ? modifiedConstraints.maxAdvancedExtenders : 4;
+        const maxImproved = modifiedConstraints.maxImprovedExtenders !== undefined ? modifiedConstraints.maxImprovedExtenders : 6;
+        const maxBasic = modifiedConstraints.maxBasicExtenders !== undefined ? modifiedConstraints.maxBasicExtenders : 8;
+        const maxSmallReactors = modifiedConstraints.maxSmallReactors !== undefined ? modifiedConstraints.maxSmallReactors : 4;
+        const maxLargeReactors = modifiedConstraints.maxLargeReactors !== undefined ? modifiedConstraints.maxLargeReactors : 2;
+        
+        // Try all generator types (or just the constrained one)
+        const generatorTypes = modifiedConstraints.generatorType ? [modifiedConstraints.generatorType] : ['compact', 'standard', 'advanced'];
+        
+        for (const generatorType of generatorTypes) {
+            const reactorConfigs = (maxSmallReactors === 0 && maxLargeReactors === 0) ? [[0, 0]] : [];
+            
+            if (maxSmallReactors > 0 || maxLargeReactors > 0) {
+                for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
+                    for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
+                        reactorConfigs.push([smallReactors, largeReactors]);
+                    }
+                }
+            }
+            
+            for (const [smallReactors, largeReactors] of reactorConfigs) {
+                const maxPowerGens = 4;
+                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
+                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
+                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
+                            continue;
+                        }
+                        
+                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                            for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
+                                for (let impCap = 0; impCap <= maxImproved; impCap++) {
+                                    for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
+                                        for (let basCap = 0; basCap <= maxBasic; basCap++) {
+                                            for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+                                                
+                                                const config = {
+                                                    generator: generatorType,
+                                                    reactors: { small: smallReactors, large: largeReactors },
+                                                    powerGenerators: {
+                                                        advancedLarge: advancedGens,
+                                                        improvedLarge: improvedGens
+                                                    },
+                                                    extenders: {
+                                                        advanced: { capacitor: advCap, charger: advChg },
+                                                        improved: { capacitor: impCap, charger: impChg },
+                                                        basic: { capacitor: basCap, charger: basChg }
+                                                    },
+                                                    blocks: { ...existingBlocks },
+                                                    crew: { ...existingCrew }
+                                                };
+                                                
+                                                const stats = this.calculator.calculateStats(config);
+                                                
+                                                // Check basic requirements
+                                                if (stats.capacity <= 0 || stats.recharge <= 0) continue;
+                                                
+                                                // Apply power utilization rules
+                                                const usesGenerators = (advancedGens > 0 || improvedGens > 0);
+                                                const usesFusion = (smallReactors > 0 || largeReactors > 0);
+                                                let powerUtilizationValid = true;
+                                                
+                                                if (usesGenerators && !usesFusion) {
+                                                    if (stats.power > 0) {
+                                                        powerUtilizationValid = false;
+                                                    } else {
+                                                        const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                        const shieldPowerRequirement = totalPowerGeneration + stats.power;
+                                                        const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                        powerUtilizationValid = utilizationPercent <= 0.5;
+                                                    }
+                                                }
+                                                
+                                                const validation = this.calculator.validateConfiguration(config, modifiedConstraints);
+                                                if (!(validation.valid || validation.warnings.length === 0) || !powerUtilizationValid) {
+                                                    continue;
+                                                }
+                                                
+                                                // Calculate balance: difference between capacity% and recharge%
+                                                const capacityPercent = stats.capacity / maxPossible.capacity;
+                                                const rechargePercent = stats.recharge / maxPossible.recharge;
+                                                const balanceDifference = Math.abs(capacityPercent - rechargePercent);
+                                                
+                                                // Only consider balanced configs (within 10%)
+                                                if (balanceDifference <= 0.1) {
+                                                    // Score by total capacity (higher is better)
+                                                    const score = stats.capacity;
+                                                    
+                                                    if (score > bestScore) {
+                                                        bestScore = score;
+                                                        bestConfig = { config, stats, validation };
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (bestConfig) {
+            return {
+                success: true,
+                configuration: bestConfig.config,
+                stats: bestConfig.stats,
+                validation: bestConfig.validation,
+                strategy: 'Max Balanced'
+            };
+        }
+        
+        return { success: false, reason: 'no_balanced_configuration' };
+    }
+    
+    // Max Capacity strategy - absolute most capacity (CPU doesn't matter unless constrained)
+    optimizeMaxCapacity(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}) {
+        // Use full constraint limits for this strategy
+        const modifiedConstraints = { ...constraints };
+        
+        let bestConfig = null;
+        let bestCapacity = -1;
+        
+        const maxAdvanced = modifiedConstraints.maxAdvancedExtenders !== undefined ? modifiedConstraints.maxAdvancedExtenders : 4;
+        const maxImproved = modifiedConstraints.maxImprovedExtenders !== undefined ? modifiedConstraints.maxImprovedExtenders : 6;
+        const maxBasic = modifiedConstraints.maxBasicExtenders !== undefined ? modifiedConstraints.maxBasicExtenders : 8;
+        const maxSmallReactors = modifiedConstraints.maxSmallReactors !== undefined ? modifiedConstraints.maxSmallReactors : 4;
+        const maxLargeReactors = modifiedConstraints.maxLargeReactors !== undefined ? modifiedConstraints.maxLargeReactors : 2;
+        
+        // Try all generator types (or just the constrained one)
+        const generatorTypes = modifiedConstraints.generatorType ? [modifiedConstraints.generatorType] : ['compact', 'standard', 'advanced'];
+        
+        for (const generatorType of generatorTypes) {
+            const reactorConfigs = (maxSmallReactors === 0 && maxLargeReactors === 0) ? [[0, 0]] : [];
+            
+            if (maxSmallReactors > 0 || maxLargeReactors > 0) {
+                for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
+                    for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
+                        reactorConfigs.push([smallReactors, largeReactors]);
+                    }
+                }
+            }
+            
+            for (const [smallReactors, largeReactors] of reactorConfigs) {
+                const maxPowerGens = 4;
+                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
+                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
+                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
+                            continue;
+                        }
+                        
+                        // Try all extender combinations to find maximum capacity
+                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                            for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
+                                for (let impCap = 0; impCap <= maxImproved; impCap++) {
+                                    for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
+                                        for (let basCap = 0; basCap <= maxBasic; basCap++) {
+                                            for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+                                                
+                                                const config = {
+                                                    generator: generatorType,
+                                                    reactors: { small: smallReactors, large: largeReactors },
+                                                    powerGenerators: {
+                                                        advancedLarge: advancedGens,
+                                                        improvedLarge: improvedGens
+                                                    },
+                                                    extenders: {
+                                                        advanced: { capacitor: advCap, charger: advChg },
+                                                        improved: { capacitor: impCap, charger: impChg },
+                                                        basic: { capacitor: basCap, charger: basChg }
+                                                    },
+                                                    blocks: { ...existingBlocks },
+                                                    crew: { ...existingCrew }
+                                                };
+                                                
+                                                const stats = this.calculator.calculateStats(config);
+                                                
+                                                // Must have positive recharge
+                                                if (stats.recharge <= 0) continue;
+                                                
+                                                // Apply power utilization rules
+                                                const usesGenerators = (advancedGens > 0 || improvedGens > 0);
+                                                const usesFusion = (smallReactors > 0 || largeReactors > 0);
+                                                let powerUtilizationValid = true;
+                                                
+                                                if (usesGenerators && !usesFusion) {
+                                                    if (stats.power > 0) {
+                                                        powerUtilizationValid = false;
+                                                    } else {
+                                                        const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                        const shieldPowerRequirement = totalPowerGeneration + stats.power;
+                                                        const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                        powerUtilizationValid = utilizationPercent <= 0.5;
+                                                    }
+                                                }
+                                                
+                                                const validation = this.calculator.validateConfiguration(config, modifiedConstraints);
+                                                if (!(validation.valid || validation.warnings.length === 0) || !powerUtilizationValid) {
+                                                    continue;
+                                                }
+                        
+                                                // Score by capacity only (higher is better)
+                                                if (stats.capacity > bestCapacity) {
+                                                    bestCapacity = stats.capacity;
+                                                    bestConfig = { config, stats, validation };
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (bestConfig) {
+            return {
+                success: true,
+                configuration: bestConfig.config,
+                stats: bestConfig.stats,
+                validation: bestConfig.validation,
+                strategy: 'Max Capacity'
+            };
+        }
+        
+        return { success: false, reason: 'no_valid_configuration' };
+    }
+    
+    // Max Recharge strategy - highest capacity with 15 second recharge or better
+    optimizeMaxRecharge(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}) {
+        // Use full constraint limits for this strategy
+        const modifiedConstraints = { ...constraints };
+        
+        // Max recharge time of 15 seconds (or user-specified)
+        const maxRechargeTime = 15; // seconds
+        
+        let bestConfig = null;
+        let bestCapacity = -1;
+        
+        const maxAdvanced = modifiedConstraints.maxAdvancedExtenders !== undefined ? modifiedConstraints.maxAdvancedExtenders : 4;
+        const maxImproved = modifiedConstraints.maxImprovedExtenders !== undefined ? modifiedConstraints.maxImprovedExtenders : 6;
+        const maxBasic = modifiedConstraints.maxBasicExtenders !== undefined ? modifiedConstraints.maxBasicExtenders : 8;
+        const maxSmallReactors = modifiedConstraints.maxSmallReactors !== undefined ? modifiedConstraints.maxSmallReactors : 4;
+        const maxLargeReactors = modifiedConstraints.maxLargeReactors !== undefined ? modifiedConstraints.maxLargeReactors : 2;
+        
+        // Try all generator types (or just the constrained one)
+        const generatorTypes = modifiedConstraints.generatorType ? [modifiedConstraints.generatorType] : ['compact', 'standard', 'advanced'];
+        
+        for (const generatorType of generatorTypes) {
+            const reactorConfigs = (maxSmallReactors === 0 && maxLargeReactors === 0) ? [[0, 0]] : [];
+            
+            if (maxSmallReactors > 0 || maxLargeReactors > 0) {
+                for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
+                    for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
+                        reactorConfigs.push([smallReactors, largeReactors]);
+                    }
+                }
+            }
+            
+            for (const [smallReactors, largeReactors] of reactorConfigs) {
+                const maxPowerGens = 4;
+                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
+                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
+                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
+                            continue;
+                        }
+                        
+                        // Try all extender combinations to find configurations with target recharge
+                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                            for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
+                                for (let impCap = 0; impCap <= maxImproved; impCap++) {
+                                    for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
+                                        for (let basCap = 0; basCap <= maxBasic; basCap++) {
+                                            for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+                                                
+                                                const config = {
+                                                    generator: generatorType,
+                                                    reactors: { small: smallReactors, large: largeReactors },
+                                                    powerGenerators: {
+                                                        advancedLarge: advancedGens,
+                                                        improvedLarge: improvedGens
+                                                    },
+                                                    extenders: {
+                                                        advanced: { capacitor: advCap, charger: advChg },
+                                                        improved: { capacitor: impCap, charger: impChg },
+                                                        basic: { capacitor: basCap, charger: basChg }
+                                                    },
+                                                    blocks: { ...existingBlocks },
+                                                    crew: { ...existingCrew }
+                                                };
+                                                
+                                                const stats = this.calculator.calculateStats(config);
+                                                
+                                                // Check if recharge time is 15 seconds or better (Capacity/Recharge <= 15)
+                                                const rechargeTime = stats.capacity / stats.recharge;
+                                                if (rechargeTime > maxRechargeTime) continue;
+                                                
+                                                // Must have positive capacity
+                                                if (stats.capacity <= 0) continue;
+                                                
+                                                // Apply power utilization rules
+                                                const usesGenerators = (advancedGens > 0 || improvedGens > 0);
+                                                const usesFusion = (smallReactors > 0 || largeReactors > 0);
+                                                let powerUtilizationValid = true;
+                                                
+                                                if (usesGenerators && !usesFusion) {
+                                                    if (stats.power > 0) {
+                                                        powerUtilizationValid = false;
+                                                    } else {
+                                                        const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000);
+                                                        const shieldPowerRequirement = totalPowerGeneration + stats.power;
+                                                        const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
+                                                        powerUtilizationValid = utilizationPercent <= 0.5;
+                                                    }
+                                                }
+                                                
+                                                const validation = this.calculator.validateConfiguration(config, modifiedConstraints);
+                                                if (!(validation.valid || validation.warnings.length === 0) || !powerUtilizationValid) {
+                                                    continue;
+                                                }
+                        
+                                                // Score by capacity only (higher is better)
+                                                if (stats.capacity > bestCapacity) {
+                                                    bestCapacity = stats.capacity;
+                                                    bestConfig = { config, stats, validation };
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (bestConfig) {
+            return {
+                success: true,
+                configuration: bestConfig.config,
+                stats: bestConfig.stats,
+                validation: bestConfig.validation,
+                strategy: 'Max Recharge'
+            };
+        }
+        
+        return { success: false, reason: 'no_valid_configuration' };
+    }
+    
+    // Calculate maximum possible capacity and recharge within constraints
+    calculateMaxPossibleStats(constraints = {}, existingBlocks = {}, existingCrew = {}) {
+        let maxCapacity = 0;
+        let maxRecharge = 0;
+        
+        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : 4;
+        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : 6;
+        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : 8;
+        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 4;
+        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 2;
+        
+        // Test with Advanced Shield Generator (highest capacity)
+        const maxCapacityConfig = {
+            generator: 'advanced',
+            reactors: { small: maxSmallReactors, large: maxLargeReactors },
+            powerGenerators: {
+                advancedLarge: 4, // Max we allow in optimization
+                improvedLarge: 0
+            },
+            extenders: {
+                advanced: { capacitor: maxAdvanced, charger: 0 },
+                improved: { capacitor: maxImproved, charger: 0 },
+                basic: { capacitor: maxBasic, charger: 0 }
+            },
+            blocks: { ...existingBlocks },
+            crew: { ...existingCrew }
+        };
+        
+        const maxCapacityStats = this.calculator.calculateStats(maxCapacityConfig);
+        maxCapacity = maxCapacityStats.capacity;
+        
+        // Test with configuration optimized for recharge
+        const maxRechargeConfig = {
+            generator: 'advanced',
+            reactors: { small: maxSmallReactors, large: maxLargeReactors },
+            powerGenerators: {
+                advancedLarge: 4,
+                improvedLarge: 0
+            },
+            extenders: {
+                advanced: { capacitor: 0, charger: maxAdvanced },
+                improved: { capacitor: 0, charger: maxImproved },
+                basic: { capacitor: 0, charger: maxBasic }
+            },
+            blocks: { ...existingBlocks },
+            crew: { ...existingCrew }
+        };
+        
+        const maxRechargeStats = this.calculator.calculateStats(maxRechargeConfig);
+        maxRecharge = maxRechargeStats.recharge;
+        
+        return {
+            capacity: maxCapacity,
+            recharge: maxRecharge
+        };
     }
 }

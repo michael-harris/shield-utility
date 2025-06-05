@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shield Configuration Calculator</title>
     
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    
     <!-- Bulma CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     
@@ -56,7 +59,7 @@
                 <!-- Dynamic Tagline -->
                 <div class="has-text-centered">
                     <p id="mode-tagline" class="subtitle is-6" style="color: #b5b5b5; margin-top: 1rem;">
-                        Find the most CPU-efficient configuration for your target shield values
+                        Automatically find the optimal configuration for your requirements
                     </p>
                 </div>
             </div>
@@ -78,7 +81,7 @@
                                 <div class="field">
                                     <label class="label">Desired Capacity (HP)</label>
                                     <div class="control has-icons-left">
-                                        <input class="input" type="number" id="target-capacity" min="0" step="1000" placeholder="e.g. 50000">
+                                        <input class="input" type="number" id="target-capacity" min="0" step="1000" placeholder="Leave blank for maximum possible">
                                         <span class="icon is-left">
                                             <i class="fas fa-heart"></i>
                                         </span>
@@ -88,12 +91,33 @@
                                 <div class="field">
                                     <label class="label">Desired Recharge (HP/s)</label>
                                     <div class="control has-icons-left">
-                                        <input class="input" type="number" id="target-recharge" min="0" step="100" placeholder="e.g. 1000">
+                                        <input class="input" type="number" id="target-recharge" min="0" step="100" placeholder="Leave blank for maximum possible">
                                         <span class="icon is-left">
                                             <i class="fas fa-bolt"></i>
                                         </span>
                                     </div>
                                     <p class="help">Will find most CPU-efficient config with at least 95% of this target</p>
+                                </div>
+                            </div>
+
+                            <!-- Strategy -->
+                            <div class="box">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-bullseye"></i> Strategy
+                                </h2>
+                                <div class="field">
+                                    <label class="label">Optimization Strategy</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="optimization-strategy">
+                                                <option value="cpu-efficiency">CPU-Efficiency</option>
+                                                <option value="max-balanced">Max Balanced</option>
+                                                <option value="max-capacity">Max Capacity</option>
+                                                <option value="max-recharge">Max Recharge</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="help" id="strategy-help">Meet target values with least CPU expenditure</p>
                                 </div>
                             </div>
 
@@ -208,6 +232,19 @@
                                     </div>
                                 </div>
                                 <div class="field">
+                                    <label class="label">Shield Generator</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="generator-constraint">
+                                                <option value="any">Any</option>
+                                                <option value="compact">Compact Shield Generator</option>
+                                                <option value="standard">Shield Generator</option>
+                                                <option value="advanced">Advanced Shield Generator</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
                                     <label class="label">Max Advanced Extenders</label>
                                     <div class="control">
                                         <div class="select is-fullwidth">
@@ -281,17 +318,30 @@
                                         </div>
                                     </div>
                                 </div>
-                                <button id="calculate-btn" class="button is-primary is-fullwidth is-medium">
-                                    <span class="icon">
-                                        <i class="fas fa-cogs"></i>
-                                    </span>
-                                    <span>Calculate Optimal Configuration</span>
-                                </button>
+                                <div class="field is-grouped">
+                                    <div class="control is-expanded">
+                                        <button id="calculate-btn" class="button is-primary is-fullwidth is-medium">
+                                            <span class="icon">
+                                                <i class="fas fa-cogs"></i>
+                                            </span>
+                                            <span>Optimize</span>
+                                        </button>
+                                    </div>
+                                    <div class="control">
+                                        <button id="reset-calculator-btn" class="button is-light is-medium">
+                                            <span class="icon">
+                                                <i class="fas fa-undo"></i>
+                                            </span>
+                                            <span>Reset</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Right Column - Results -->
                         <div class="column is-4">
+                            
                             <!-- Optimal Configuration Stats -->
                             <div id="calculator-stats-box" class="box is-hidden">
                                 <h2 class="title is-4">
@@ -306,6 +356,14 @@
                                         <p class="heading">Recharge Rate</p>
                                         <p class="title" id="calc-recharge">0 HP/s</p>
                                     </div>
+                                </div>
+                                
+                                <!-- Recharge Time Display -->
+                                <div class="recharge-time-display">
+                                    <p class="has-text-centered" id="calc-recharge-time">Recharges in 0.0 seconds</p>
+                                </div>
+                                
+                                <div class="stat-grid">
                                     <div class="stat-item">
                                         <p class="heading">CPU Usage</p>
                                         <p class="title" id="calc-cpu">0</p>
@@ -319,6 +377,24 @@
                                 <!-- Visual Chart -->
                                 <div class="mt-5">
                                     <canvas id="calculatorStatsChart" width="400" height="300"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Export Actions -->
+                            <div id="calculator-export-actions" class="box is-hidden">
+                                <div class="buttons is-centered">
+                                    <button id="export-calculator-btn" class="button is-primary">
+                                        <span class="icon">
+                                            <i class="fas fa-download"></i>
+                                        </span>
+                                        <span>Export</span>
+                                    </button>
+                                    <button id="edit-in-explorer-btn" class="button is-info">
+                                        <span class="icon">
+                                            <i class="fas fa-edit"></i>
+                                        </span>
+                                        <span>Edit In Explorer</span>
+                                    </button>
                                 </div>
                             </div>
                             
@@ -702,6 +778,14 @@
                                         <p class="heading">Recharge Rate</p>
                                         <p class="title" id="live-recharge">0 HP/s</p>
                                     </div>
+                                </div>
+                                
+                                <!-- Recharge Time Display -->
+                                <div class="recharge-time-display">
+                                    <p class="has-text-centered" id="live-recharge-time">Recharges in 0.0 seconds</p>
+                                </div>
+                                
+                                <div class="stat-grid">
                                     <div class="stat-item">
                                         <p class="heading">CPU Usage</p>
                                         <p class="title" id="live-cpu">0</p>
@@ -718,6 +802,18 @@
                                 <!-- Visual Chart -->
                                 <div class="mt-5">
                                     <canvas id="statsChart" width="400" height="300"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Export Actions -->
+                            <div id="explorer-export-actions" class="box" style="display: none;">
+                                <div class="buttons is-centered">
+                                    <button id="export-explorer-btn" class="button is-primary">
+                                        <span class="icon">
+                                            <i class="fas fa-download"></i>
+                                        </span>
+                                        <span>Export</span>
+                                    </button>
                                 </div>
                             </div>
                             
@@ -739,8 +835,23 @@
         </section>
     </div>
 
+    <!-- Optimizing Modal Overlay -->
+    <div id="optimizing-modal" class="optimizing-overlay is-hidden">
+        <div class="optimizing-modal">
+            <div class="spinner-large"></div>
+            <h3 class="optimizing-title">Optimizing Configuration</h3>
+            <p class="optimizing-subtitle">Finding the best shield setup for your requirements...</p>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container" class="notification-container"></div>
+
     <!-- JavaScript Files -->
     <script src="js/data.js"></script>
+    <script src="js/fast-optimizer.js"></script>
+    <script src="js/optimization-cache.js"></script>
+    <script src="js/precalculation-engine.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/optimizer.js"></script>
     <script src="js/ui.js"></script>

@@ -6,11 +6,14 @@ class UIController {
         this.currentMode = 'value-to-component';
         this.chart = null;
         this.calculatorChart = null; // Chart for calculator results
+        this.lastOptimizationResult = null; // Store last optimization result for export/edit
         
         this.initializeEventListeners();
         this.initializeExtenderDropdowns();
         this.updateComponentBoxStates();
         this.updateLiveStats();
+        this.initializeInputValidation();
+        this.updateStrategyHelp(); // Initialize target values state
     }
     
     // Initialize all event listeners
@@ -28,6 +31,34 @@ class UIController {
         const calculateBtn = document.getElementById('calculate-btn');
         if (calculateBtn) {
             calculateBtn.addEventListener('click', () => this.calculateOptimal());
+        }
+        
+        // Reset calculator button
+        const resetCalculatorBtn = document.getElementById('reset-calculator-btn');
+        if (resetCalculatorBtn) {
+            resetCalculatorBtn.addEventListener('click', () => this.resetCalculatorForm());
+        }
+        
+        // Strategy selection
+        const strategySelect = document.getElementById('optimization-strategy');
+        if (strategySelect) {
+            strategySelect.addEventListener('change', () => this.updateStrategyHelp());
+        }
+        
+        // Export buttons
+        const exportCalculatorBtn = document.getElementById('export-calculator-btn');
+        if (exportCalculatorBtn) {
+            exportCalculatorBtn.addEventListener('click', () => this.exportCalculatorConfiguration());
+        }
+        
+        const exportExplorerBtn = document.getElementById('export-explorer-btn');
+        if (exportExplorerBtn) {
+            exportExplorerBtn.addEventListener('click', () => this.exportExplorerConfiguration());
+        }
+        
+        const editInExplorerBtn = document.getElementById('edit-in-explorer-btn');
+        if (editInExplorerBtn) {
+            editInExplorerBtn.addEventListener('click', () => this.editInExplorer());
         }
         
         // Block inputs for value-to-component mode
@@ -100,7 +131,7 @@ class UIController {
         if (!taglineElement) return;
         
         const taglines = {
-            'value-to-component': 'Find the most CPU-efficient configuration for your target shield values',
+            'value-to-component': 'Automatically find the optimal configuration for your requirements',
             'component-to-value': 'Experiment with different components and see real-time shield performance'
         };
         
@@ -194,6 +225,61 @@ class UIController {
         }
     }
     
+    // Update strategy help text
+    updateStrategyHelp() {
+        const strategy = document.getElementById('optimization-strategy').value;
+        const helpElement = document.getElementById('strategy-help');
+        
+        const helpTexts = {
+            'cpu-efficiency': 'Meet target values with least CPU expenditure (within constraints)',
+            'max-balanced': 'Highest capacity with a balanced recharge rate (within constraints)',
+            'max-capacity': 'Absolute most capacity with positive recharge (within constraints)',
+            'max-recharge': 'Highest capacity with 15 second recharge or better (within constraints)'
+        };
+        
+        const fusionTips = {
+            'max-balanced': '💡 Tip: Consider adding fusion reactor constraints if you want more realistic builds',
+            'max-capacity': '💡 Tip: Consider adding fusion reactor constraints if you want more realistic builds', 
+            'max-recharge': '💡 Tip: Consider adding fusion reactor constraints if you want more realistic builds'
+        };
+        
+        if (helpElement) {
+            const baseText = helpTexts[strategy] || helpTexts['cpu-efficiency'];
+            const tip = fusionTips[strategy] ? `\n${fusionTips[strategy]}` : '';
+            helpElement.textContent = baseText + tip;
+        }
+        
+        // Enable/disable target values box based on strategy
+        this.updateTargetValuesState(strategy);
+    }
+    
+    // Enable/disable target values box based on strategy
+    updateTargetValuesState(strategy) {
+        const targetValuesBox = document.querySelector('.box').parentElement.querySelector('.box');
+        const targetCapacityInput = document.getElementById('target-capacity');
+        const targetRechargeInput = document.getElementById('target-recharge');
+        
+        // Find the target values box (first box in left column)
+        const leftColumn = document.querySelector('.column.is-4');
+        const targetBox = leftColumn ? leftColumn.querySelector('.box') : null;
+        
+        if (targetBox && targetCapacityInput && targetRechargeInput) {
+            const isCpuEfficiency = strategy === 'cpu-efficiency';
+            
+            // Toggle disabled state
+            targetBox.classList.toggle('component-box-disabled', !isCpuEfficiency);
+            targetCapacityInput.disabled = !isCpuEfficiency;
+            targetRechargeInput.disabled = !isCpuEfficiency;
+            
+            // Clear values if disabling
+            if (!isCpuEfficiency) {
+                targetCapacityInput.value = '';
+                targetRechargeInput.value = '';
+                this.updateBlockCapacity();
+            }
+        }
+    }
+    
     // Update live stats for component-to-value mode
     updateLiveStats() {
         const config = this.getCurrentConfiguration();
@@ -203,8 +289,11 @@ class UIController {
         // Update stat displays
         this.updateStatDisplay('live-capacity', stats.capacity, 'HP');
         this.updateStatDisplay('live-recharge', stats.recharge, 'HP/s');
-        this.updateStatDisplay('live-cpu', stats.cpu, '');
+        this.updateStatDisplay('live-cpu', stats.cpu, 'TF');
         this.updateStatDisplay('live-power', stats.power, 'W', true);
+        
+        // Update recharge time
+        this.updateRechargeTime('live-recharge-time', stats.capacity, stats.recharge);
         
         // Update warnings
         this.updateWarnings(validation.warnings);
@@ -223,11 +312,11 @@ class UIController {
             let formattedValue;
             if (isPower) {
                 if (value < 0) {
-                    // Negative power means generation
-                    formattedValue = '+' + ComponentUtils.formatPower(Math.abs(value)) + ' Generated';
+                    // Negative power means generation (surplus)
+                    formattedValue = '+' + ComponentUtils.formatPower(Math.abs(value));
                 } else if (value > 0) {
-                    // Positive power means consumption
-                    formattedValue = '-' + ComponentUtils.formatPower(value) + ' Required';
+                    // Positive power means consumption (should not happen in optimized configs)
+                    formattedValue = '-' + ComponentUtils.formatPower(value);
                 } else {
                     formattedValue = '0 W';
                 }
@@ -243,6 +332,18 @@ class UIController {
             } else {
                 element.classList.toggle('negative', value < 0); // Red if negative stats
             }
+        }
+    }
+    
+    // Update recharge time display
+    updateRechargeTime(elementId, capacity, recharge) {
+        const element = document.getElementById(elementId);
+        if (element && capacity > 0 && recharge > 0) {
+            const rechargeTimeSeconds = capacity / recharge;
+            const formattedTime = rechargeTimeSeconds.toFixed(1);
+            element.textContent = `Recharges in ${formattedTime} seconds`;
+        } else if (element) {
+            element.textContent = 'Recharges in 0.0 seconds';
         }
     }
     
@@ -374,35 +475,90 @@ class UIController {
         return mapping[id];
     }
     
+    // Calculate bonus stats from blocks and crew
+    calculateBonusStats(blocks, crew) {
+        let bonusCapacity = 0;
+        let bonusRecharge = 0;
+        
+        // Add block bonuses
+        if (blocks.steel) bonusCapacity += blocks.steel * 1;
+        if (blocks.hardenedSteel) bonusCapacity += blocks.hardenedSteel * 2;
+        if (blocks.combatSteel) bonusCapacity += blocks.combatSteel * 4;
+        if (blocks.xenoSteel) bonusCapacity += blocks.xenoSteel * 7;
+        
+        // Add crew bonuses (shield technician: +2000 capacity, +75 recharge)
+        if (crew.shieldTechnicians) {
+            bonusCapacity += crew.shieldTechnicians * 2000;
+            bonusRecharge += crew.shieldTechnicians * 75;
+        }
+        
+        return {
+            capacity: bonusCapacity,
+            recharge: bonusRecharge
+        };
+    }
+    
+    // Hide all result boxes
+    hideAllResultBoxes() {
+        const boxesToHide = [
+            'calculator-stats-box',
+            'required-components-box',
+            'applied-constraints-box',
+            'calculator-export-actions'
+        ];
+        
+        boxesToHide.forEach(boxId => {
+            const box = document.getElementById(boxId);
+            if (box) {
+                box.classList.add('is-hidden');
+            }
+        });
+    }
+    
     // Calculate optimal configuration
     async calculateOptimal() {
         const calculateBtn = document.getElementById('calculate-btn');
+        const optimizingModal = document.getElementById('optimizing-modal');
+        
+        // Show optimizing modal
+        if (optimizingModal) {
+            
+            // Force show by removing hidden class and ensuring it's visible
+            optimizingModal.classList.remove('is-hidden');
+            optimizingModal.style.display = 'flex';
+            
+        }
         
         // Show loading state
-        calculateBtn.classList.add('is-loading');
+        if (calculateBtn) {
+            calculateBtn.classList.add('is-loading');
+        }
+        
+        // Hide previous results
+        this.hideAllResultBoxes();
+        
+        // Add a minimum delay to ensure modal is visible
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Track when optimization started
+        const optimizationStartTime = Date.now();
         
         try {
-            // Get input values
-            const targetCapacity = parseInt(document.getElementById('target-capacity').value) || 0;
-            const targetRecharge = parseInt(document.getElementById('target-recharge').value) || 0;
-            
-            if (!targetCapacity && !targetRecharge) {
-                this.showError('Please enter at least one target value (capacity or recharge).');
-                return;
+            // Validate all inputs first
+            if (!this.validateAllInputs()) {
+                this.showError('Please fix the input validation errors before optimizing.');
+                throw new Error('Validation failed');
             }
             
-            // Get constraints
-            const constraints = {
-                cpuLimit: parseInt(document.getElementById('cpu-limit').value) || null,
-                powerLimit: parseInt(document.getElementById('power-limit').value) || null,
-                maxAdvancedExtenders: parseInt(document.getElementById('max-advanced-extenders').value),
-                maxImprovedExtenders: parseInt(document.getElementById('max-improved-extenders').value),
-                maxBasicExtenders: parseInt(document.getElementById('max-basic-extenders').value),
-                maxSmallReactors: parseInt(document.getElementById('max-small-reactors').value),
-                maxLargeReactors: parseInt(document.getElementById('max-large-reactors').value)
-            };
+            // Get input values and check if user entered targets
+            const targetCapacityInput = document.getElementById('target-capacity').value.trim();
+            const targetRechargeInput = document.getElementById('target-recharge').value.trim();
+            const hasTargets = targetCapacityInput !== '' || targetRechargeInput !== '';
             
-            // Get existing blocks
+            let targetCapacity = parseInt(targetCapacityInput) || null;
+            let targetRecharge = parseInt(targetRechargeInput) || null;
+            
+            // Get existing blocks and crew
             const existingBlocks = {
                 steel: parseInt(document.getElementById('steel-blocks').value) || 0,
                 hardenedSteel: parseInt(document.getElementById('hardened-steel-blocks').value) || 0,
@@ -410,22 +566,80 @@ class UIController {
                 xenoSteel: parseInt(document.getElementById('xeno-steel-blocks').value) || 0
             };
             
-            // Get existing crew
             const existingCrew = {
                 shieldTechnicians: parseInt(document.getElementById('existing-shield-technicians').value) || 0
             };
             
+            // Calculate bonus stats from blocks and crew
+            const bonusStats = this.calculateBonusStats(existingBlocks, existingCrew);
+            
+            // If user entered targets, subtract bonus stats from targets for optimization
+            if (hasTargets) {
+                if (targetCapacity) {
+                    targetCapacity = Math.max(1, targetCapacity - bonusStats.capacity);
+                }
+                if (targetRecharge) {
+                    targetRecharge = Math.max(1, targetRecharge - bonusStats.recharge);
+                }
+            }
+            
+            // Get strategy and constraints
+            const strategy = document.getElementById('optimization-strategy').value;
+            const constraints = {
+                cpuLimit: parseInt(document.getElementById('cpu-limit').value) || null,
+                powerLimit: parseInt(document.getElementById('power-limit').value) || null,
+                generatorType: document.getElementById('generator-constraint').value !== 'any' ? document.getElementById('generator-constraint').value : null,
+                maxAdvancedExtenders: parseInt(document.getElementById('max-advanced-extenders').value),
+                maxImprovedExtenders: parseInt(document.getElementById('max-improved-extenders').value),
+                maxBasicExtenders: parseInt(document.getElementById('max-basic-extenders').value),
+                maxSmallReactors: parseInt(document.getElementById('max-small-reactors').value),
+                maxLargeReactors: parseInt(document.getElementById('max-large-reactors').value)
+            };
+            
             // Perform optimization
-            const result = this.optimizer.optimize(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew);
+            let result;
+            if (hasTargets) {
+                // User specified targets: use adjusted targets and include blocks/crew in optimization
+                result = await this.optimizer.optimize(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew, strategy);
+            } else {
+                // No targets specified: optimize without blocks/crew, then add bonus stats to result
+                result = await this.optimizer.optimize(null, null, constraints, {}, {}, strategy);
+                if (result.success) {
+                    result.stats.capacity += bonusStats.capacity;
+                    result.stats.recharge += bonusStats.recharge;
+                    // Include blocks/crew in the final configuration for display
+                    if (Object.values(existingBlocks).some(count => count > 0)) {
+                        result.configuration.blocks = existingBlocks;
+                    }
+                    if (Object.values(existingCrew).some(count => count > 0)) {
+                        result.configuration.crew = existingCrew;
+                    }
+                }
+            }
             
             // Display results
             this.displayOptimizationResults(result, targetCapacity, targetRecharge);
             
         } catch (error) {
-            console.error('Optimization error:', error);
             this.showError('An error occurred during optimization. Please try again.');
         } finally {
-            calculateBtn.classList.remove('is-loading');
+            // Ensure modal was visible for at least 500ms
+            const elapsedTime = Date.now() - optimizationStartTime;
+            const remainingTime = Math.max(0, 500 - elapsedTime);
+            if (remainingTime > 0) {
+                await new Promise(resolve => setTimeout(resolve, remainingTime));
+            }
+            
+            // Remove loading state and hide optimizing modal
+            if (calculateBtn) {
+                calculateBtn.classList.remove('is-loading');
+            }
+            if (optimizingModal) {
+                // Hide with both class and inline style
+                optimizingModal.classList.add('is-hidden');
+                optimizingModal.style.display = 'none';
+                
+            }
         }
     }
     
@@ -435,6 +649,9 @@ class UIController {
             this.displayOptimizationFailure(result, targetCapacity, targetRecharge);
             return;
         }
+        
+        // Store the last successful optimization result
+        this.lastOptimizationResult = result;
         
         const config = result.configuration;
         const stats = result.stats;
@@ -452,9 +669,9 @@ class UIController {
         document.getElementById('calculator-stats-box').classList.remove('is-hidden');
         document.getElementById('required-components-box').classList.remove('is-hidden');
         document.getElementById('applied-constraints-box').classList.remove('is-hidden');
+        document.getElementById('calculator-export-actions').classList.remove('is-hidden');
         
-        // Reset the form after successful calculation
-        this.resetCalculatorForm();
+        // Don't auto-reset form - let users experiment
     }
     
     // Display optimization failure
@@ -470,12 +687,12 @@ class UIController {
         document.getElementById('calculator-stats-box').classList.add('is-hidden');
         document.getElementById('required-components-box').classList.add('is-hidden');
         document.getElementById('applied-constraints-box').classList.add('is-hidden');
+        document.getElementById('calculator-export-actions').classList.add('is-hidden');
     }
     
     // Create component card HTML (for calculator results - uses same format as inventory)
     createComponentCard(component, quantity) {
         if (!component || typeof component !== 'object') {
-            console.error('Invalid component:', component);
             return '';
         }
         
@@ -496,24 +713,35 @@ class UIController {
     
     // Show error message
     showError(message) {
-        // Create temporary notification
+        this.showNotification(message, 'is-danger', 5000);
+    }
+    
+    // Show success message
+    showSuccess(message) {
+        this.showNotification(message, 'is-success', 3000);
+    }
+    
+    // Show notification in the fixed container
+    showNotification(message, type, duration) {
+        const container = document.getElementById('notification-container') || document.body;
+        
+        // Create notification
         const notification = document.createElement('div');
-        notification.className = 'notification is-danger';
+        notification.className = `notification ${type}`;
         notification.innerHTML = `
             <button class="delete" onclick="this.parentElement.remove()"></button>
             ${message}
         `;
         
-        // Insert at top of container
-        const container = document.querySelector('.container');
-        container.insertBefore(notification, container.firstChild);
+        // Add to container
+        container.appendChild(notification);
         
-        // Auto-remove after 5 seconds
+        // Auto-remove after specified duration
         setTimeout(() => {
             if (notification.parentElement) {
                 notification.remove();
             }
-        }, 5000);
+        }, duration);
     }
     
     // Initialize Chart.js chart
@@ -622,7 +850,6 @@ class UIController {
             basicChargers++;
         }
         
-        console.log('Maximum capacity with positive recharge:', maxCapacity);
         return maxCapacity;
     }
     
@@ -669,7 +896,6 @@ class UIController {
             chargersAdded.basic++;
         }
         
-        console.log('Maximum recharge with 1 large reactor:', maxRecharge);
         return maxRecharge;
     }
     
@@ -707,7 +933,6 @@ class UIController {
         // Ensure stats object has all required properties
         if (!stats || typeof stats.capacity === 'undefined' || typeof stats.recharge === 'undefined' || 
             typeof stats.cpu === 'undefined' || typeof stats.power === 'undefined') {
-            console.warn('Invalid stats object:', stats);
             return;
         }
         
@@ -736,8 +961,8 @@ class UIController {
             Math.max(0, Math.min(100, 100 - ((stats.cpu - minCPU) / (maxCPU - minCPU)) * 100)),
             
             // Power Efficiency: 100% = power surplus <= 50kW, 0% = power required (positive)
-            // If no components selected (power = 0), show 100% efficiency
-            stats.power === 0 ? 100 :
+            // If no components selected (power = 0), show 0% efficiency (no shield = no efficiency)
+            stats.power === 0 ? 0 :
             stats.power > 0 ? 0 :  // Positive power (required) = 0% efficiency
             // Negative power means surplus - calculate efficiency based on surplus amount
             (() => {
@@ -755,22 +980,22 @@ class UIController {
         this.updateStrategyDisplay(normalizedData[0], normalizedData[1]);
     }
     
-    // Determine and display strategy based on capacity and recharge percentages
+    // Determine and display result based on capacity and recharge percentages
     updateStrategyDisplay(capacityPercent, rechargePercent) {
-        let strategy = 'Balanced';
+        let result = 'Balanced Capacity/Recharge';
         
         const difference = capacityPercent - rechargePercent;
         
         if (difference > 15) {
-            strategy = 'Capacity';
+            result = 'High Capacity';
         } else if (difference < -15) {
-            strategy = 'Recharge';
+            result = 'High Recharge';
         }
         
-        // Update or create strategy display
+        // Update or create result display
         let strategyBox = document.getElementById('strategy-display');
         if (!strategyBox) {
-            // Create strategy box if it doesn't exist
+            // Create result box if it doesn't exist
             const chartContainer = document.getElementById('statsChart');
             if (!chartContainer) return;
             
@@ -786,7 +1011,7 @@ class UIController {
             chartDiv.insertAdjacentElement('afterend', strategyBox);
         }
         
-        strategyBox.innerHTML = `<strong>Strategy:</strong> ${strategy}`;
+        strategyBox.innerHTML = `<strong>Result:</strong> ${result}`;
     }
     
     // Update inventory display for Shield Explorer
@@ -873,6 +1098,12 @@ class UIController {
         }
         
         inventoryContent.innerHTML = html;
+        
+        // Show/hide explorer export button based on whether there are components
+        const exportActions = document.getElementById('explorer-export-actions');
+        if (exportActions) {
+            exportActions.style.display = totalComponents > 0 ? 'block' : 'none';
+        }
     }
     
     // Create inventory item HTML
@@ -897,8 +1128,11 @@ class UIController {
         // Update stat displays
         this.updateStatDisplay('calc-capacity', stats.capacity, 'HP');
         this.updateStatDisplay('calc-recharge', stats.recharge, 'HP/s');
-        this.updateStatDisplay('calc-cpu', stats.cpu, '');
+        this.updateStatDisplay('calc-cpu', stats.cpu, 'TF');
         this.updateStatDisplay('calc-power', stats.power, 'W', true);
+        
+        // Update recharge time
+        this.updateRechargeTime('calc-recharge-time', stats.capacity, stats.recharge);
         
         // Initialize and update calculator chart
         this.initializeCalculatorChart();
@@ -1000,8 +1234,8 @@ class UIController {
             Math.max(0, Math.min(100, 100 - ((stats.cpu - minCPU) / (maxCPU - minCPU)) * 100)),
             
             // Power Efficiency: 100% = power surplus <= 50kW, 0% = power required (positive)
-            // If no components selected (power = 0), show 100% efficiency
-            stats.power === 0 ? 100 :
+            // If no components selected (power = 0), show 0% efficiency (no shield = no efficiency)
+            stats.power === 0 ? 0 :
             stats.power > 0 ? 0 :  // Positive power (required) = 0% efficiency
             // Negative power means surplus - calculate efficiency based on surplus amount
             (() => {
@@ -1019,22 +1253,22 @@ class UIController {
         this.updateCalculatorStrategyDisplay(normalizedData[0], normalizedData[1]);
     }
     
-    // Update strategy display for calculator mode
+    // Update result display for calculator mode
     updateCalculatorStrategyDisplay(capacityPercent, rechargePercent) {
-        let strategy = 'Balanced';
+        let result = 'Balanced Capacity/Recharge';
         
         const difference = capacityPercent - rechargePercent;
         
         if (difference > 15) {
-            strategy = 'Capacity';
+            result = 'High Capacity';
         } else if (difference < -15) {
-            strategy = 'Recharge';
+            result = 'High Recharge';
         }
         
-        // Update or create strategy display
+        // Update or create result display
         let strategyBox = document.getElementById('calculator-strategy-display');
         if (!strategyBox) {
-            // Create strategy box if it doesn't exist
+            // Create result box if it doesn't exist
             const chartContainer = document.getElementById('calculatorStatsChart');
             if (!chartContainer) return;
             
@@ -1050,7 +1284,7 @@ class UIController {
             chartDiv.insertAdjacentElement('afterend', strategyBox);
         }
         
-        strategyBox.innerHTML = `<strong>Strategy:</strong> ${strategy}`;
+        strategyBox.innerHTML = `<strong>Result:</strong> ${result}`;
     }
     
     // Reset the calculator form
@@ -1068,6 +1302,7 @@ class UIController {
         // Reset constraints
         document.getElementById('cpu-limit').value = '';
         document.getElementById('power-limit').value = '';
+        document.getElementById('generator-constraint').value = 'any';
         document.getElementById('max-advanced-extenders').value = '4';
         document.getElementById('max-improved-extenders').value = '6';
         document.getElementById('max-basic-extenders').value = '8';
@@ -1077,8 +1312,124 @@ class UIController {
         // Reset crew
         document.getElementById('existing-shield-technicians').value = '0';
         
+        // Reset strategy
+        document.getElementById('optimization-strategy').value = 'cpu-efficiency';
+        this.updateStrategyHelp();
+        
         // Update block capacity display
         this.updateBlockCapacity();
+    }
+    
+    // Initialize input validation for numerical fields
+    initializeInputValidation() {
+        // Find all number inputs
+        const numberInputs = document.querySelectorAll('input[type="number"]');
+        
+        numberInputs.forEach(input => {
+            // Add input event listener for real-time validation
+            input.addEventListener('input', (e) => this.validateNumberInput(e.target));
+            input.addEventListener('blur', (e) => this.validateNumberInput(e.target));
+            
+            // Prevent invalid characters
+            input.addEventListener('keypress', (e) => {
+                // Allow: backspace, delete, tab, escape, enter, decimal point
+                const allowedKeys = [8, 9, 27, 13, 46, 110, 190];
+                
+                // Allow Ctrl+A, Ctrl+C, Ctrl+V, etc.
+                if (e.ctrlKey || e.metaKey) return;
+                
+                // Allow navigation keys
+                if (allowedKeys.includes(e.keyCode)) return;
+                
+                // Ensure it's a number
+                if (e.keyCode < 48 || e.keyCode > 57) {
+                    e.preventDefault();
+                }
+            });
+        });
+    }
+    
+    // Validate a number input field
+    validateNumberInput(input) {
+        const value = input.value.trim();
+        
+        // Allow empty values for optional fields
+        if (value === '') {
+            this.clearInputError(input);
+            return true;
+        }
+        
+        // Check if it's a valid number
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) {
+            this.showInputError(input, 'Must be a valid number');
+            return false;
+        }
+        
+        // Check minimum value
+        const min = parseFloat(input.getAttribute('min')) || 0;
+        if (numValue < min) {
+            this.showInputError(input, `Must be at least ${min}`);
+            return false;
+        }
+        
+        // Check maximum value if specified
+        const max = parseFloat(input.getAttribute('max'));
+        if (max !== null && numValue > max) {
+            this.showInputError(input, `Must be at most ${max}`);
+            return false;
+        }
+        
+        // Ensure integer values where appropriate
+        if (input.getAttribute('step') === '1' || !input.hasAttribute('step')) {
+            if (!Number.isInteger(numValue)) {
+                this.showInputError(input, 'Must be a whole number');
+                return false;
+            }
+        }
+        
+        this.clearInputError(input);
+        return true;
+    }
+    
+    // Show error message for input field
+    showInputError(input, message) {
+        // Add error class to input
+        input.classList.add('is-danger');
+        
+        // Find or create error message element
+        let errorElement = input.parentElement.querySelector('.help.is-danger');
+        if (!errorElement) {
+            errorElement = document.createElement('p');
+            errorElement.className = 'help is-danger';
+            input.parentElement.appendChild(errorElement);
+        }
+        
+        errorElement.textContent = message;
+    }
+    
+    // Clear error message for input field
+    clearInputError(input) {
+        input.classList.remove('is-danger');
+        
+        const errorElement = input.parentElement.querySelector('.help.is-danger');
+        if (errorElement) {
+            errorElement.remove();
+        }
+    }
+    
+    // Validate all numerical inputs before form submission
+    validateAllInputs() {
+        const numberInputs = document.querySelectorAll('input[type="number"]');
+        let allValid = true;
+        
+        numberInputs.forEach(input => {
+            if (!this.validateNumberInput(input)) {
+                allValid = false;
+            }
+        });
+        
+        return allValid;
     }
     
     // Reset the shield explorer
@@ -1198,6 +1549,7 @@ class UIController {
         // Get current constraint values
         const cpuLimit = document.getElementById('cpu-limit').value;
         const powerLimit = document.getElementById('power-limit').value;
+        const generatorConstraint = document.getElementById('generator-constraint').value;
         const maxAdvanced = document.getElementById('max-advanced-extenders').value;
         const maxImproved = document.getElementById('max-improved-extenders').value;
         const maxBasic = document.getElementById('max-basic-extenders').value;
@@ -1205,30 +1557,521 @@ class UIController {
         const maxLargeReactors = document.getElementById('max-large-reactors').value;
         
         const html = `
-            <div class="columns is-multiline">
-                <div class="column is-half">
-                    <ul style="color: var(--text-primary);">
-                        <li><strong>CPU Limit:</strong> ${cpuLimit || 'No limit'}</li>
-                        <li><strong>Power Limit:</strong> ${powerLimit ? ComponentUtils.formatPower(parseInt(powerLimit)) : 'No limit'}</li>
-                    </ul>
-                </div>
-                <div class="column is-half">
-                    <ul style="color: var(--text-primary);">
-                        <li><strong>Max Advanced Extenders:</strong> ${maxAdvanced}</li>
-                        <li><strong>Max Improved Extenders:</strong> ${maxImproved}</li>
-                        <li><strong>Max Basic Extenders:</strong> ${maxBasic}</li>
-                        <li><strong>Max Small Reactors:</strong> ${maxSmallReactors}</li>
-                        <li><strong>Max Large Reactors:</strong> ${maxLargeReactors}</li>
-                    </ul>
-                </div>
-            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 12px; width: 25%; vertical-align: middle;">
+                        <span class="constraint-label">CPU Limit:</span>
+                    </td>
+                    <td style="padding: 8px 12px; width: 25%; vertical-align: middle;">
+                        <span class="constraint-value">${cpuLimit || 'No limit'}</span>
+                    </td>
+                    <td style="padding: 8px 12px; width: 25%; vertical-align: middle;">
+                        <span class="constraint-label">Power Limit:</span>
+                    </td>
+                    <td style="padding: 8px 12px; width: 25%; vertical-align: middle;">
+                        <span class="constraint-value">${powerLimit ? ComponentUtils.formatPower(parseInt(powerLimit)) : 'No limit'}</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Shield Generator:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${generatorConstraint === 'any' ? 'Any' : generatorConstraint.charAt(0).toUpperCase() + generatorConstraint.slice(1)}</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Max Advanced:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${maxAdvanced}</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Max Improved:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${maxImproved}</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Max Basic:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${maxBasic}</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Max Small Reactors:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${maxSmallReactors}</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Max Large Reactors:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${maxLargeReactors}</span>
+                    </td>
+                </tr>
+            </table>
         `;
         
         appliedConstraintsContent.innerHTML = html;
     }
     
-    // Create constraints display for results (legacy - kept for compatibility)
-    createConstraintsDisplay() {
-        return '';
+    // Export calculator configuration to self-contained HTML file
+    exportCalculatorConfiguration() {
+        // Check if we have results to export
+        if (!this.lastOptimizationResult || !this.lastOptimizationResult.success) {
+            this.showError('No configuration to export. Please run the calculator first.');
+            return;
+        }
+        
+        const config = this.lastOptimizationResult.configuration;
+        const stats = this.lastOptimizationResult.stats;
+        
+        // Build calculator stats HTML from individual elements
+        const capacityEl = document.getElementById('calc-capacity');
+        const rechargeEl = document.getElementById('calc-recharge');
+        const cpuEl = document.getElementById('calc-cpu');
+        const powerEl = document.getElementById('calc-power');
+        
+        const calculatorStats = `
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <label>Capacity:</label>
+                    <span>${capacityEl ? capacityEl.textContent : '0 HP'}</span>
+                </div>
+                <div class="stat-item">
+                    <label>Recharge:</label>
+                    <span>${rechargeEl ? rechargeEl.textContent : '0 HP/s'}</span>
+                </div>
+                <div class="stat-item">
+                    <label>CPU:</label>
+                    <span>${cpuEl ? cpuEl.textContent : '0'}</span>
+                </div>
+                <div class="stat-item">
+                    <label>Power:</label>
+                    <span>${powerEl ? powerEl.textContent : '0 W'}</span>
+                </div>
+            </div>
+        `;
+        
+        // Build simple component table
+        const componentsTable = this.buildSimpleComponentTable(config);
+        
+        // Generate export data
+        const exportData = {
+            type: 'Calculator Results',
+            generatedAt: new Date().toLocaleString(),
+            stats: calculatorStats,
+            components: componentsTable,
+            constraints: null // Remove constraints
+        };
+        
+        this.generateAndDownloadReport(exportData);
     }
+    
+    // Export explorer configuration to self-contained HTML file
+    exportExplorerConfiguration() {
+        const config = this.getCurrentConfiguration();
+        const stats = this.calculator.calculateStats(config);
+        
+        // Check if there are any components
+        const hasComponents = config.generator !== 'none' || 
+                            Object.values(config.powerGenerators).some(count => count > 0) ||
+                            config.reactors.small > 0 || config.reactors.large > 0 ||
+                            Object.values(config.extenders).some(tier => tier.capacitor > 0 || tier.charger > 0);
+        
+        if (!hasComponents) {
+            this.showError('No configuration to export. Please select components first.');
+            return;
+        }
+        
+        // Build simple component table
+        const componentsTable = this.buildSimpleComponentTable(config);
+        
+        // Generate stats HTML
+        const statsHTML = `
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <label>Capacity:</label>
+                    <span>${ComponentUtils.formatNumber(stats.capacity)} HP</span>
+                </div>
+                <div class="stat-item">
+                    <label>Recharge:</label>
+                    <span>${ComponentUtils.formatNumber(stats.recharge)} HP/s</span>
+                </div>
+                <div class="stat-item">
+                    <label>CPU:</label>
+                    <span>${ComponentUtils.formatNumber(stats.cpu)}</span>
+                </div>
+                <div class="stat-item">
+                    <label>Power:</label>
+                    <span>${stats.power < 0 ? '+' + ComponentUtils.formatPower(Math.abs(stats.power)) + ' Generated' : 
+                           stats.power > 0 ? '-' + ComponentUtils.formatPower(stats.power) + ' Required' : '0 W'}</span>
+                </div>
+            </div>
+        `;
+        
+        const exportData = {
+            type: 'Shield Explorer Build',
+            generatedAt: new Date().toLocaleString(),
+            stats: statsHTML,
+            components: componentsTable,
+            constraints: null
+        };
+        
+        this.generateAndDownloadReport(exportData);
+    }
+    
+    // Edit current calculator results in explorer
+    editInExplorer() {
+        // Get the last optimization result
+        if (!this.lastOptimizationResult || !this.lastOptimizationResult.success) {
+            this.showError('No calculator results to edit. Please run the calculator first.');
+            return;
+        }
+        
+        const config = this.lastOptimizationResult.configuration;
+        
+        // Populate explorer with the configuration
+        this.populateExplorerFromConfiguration(config);
+        
+        // Switch to explorer mode
+        this.switchMode('component-to-value');
+        
+        // Show success message
+        this.showSuccess('Configuration loaded into Shield Explorer. You can now modify components.');
+    }
+    
+    // Populate explorer from a configuration object
+    populateExplorerFromConfiguration(config) {
+        // Set generator
+        const generatorSelect = document.getElementById('shield-generator-select');
+        if (generatorSelect && config.generator) {
+            generatorSelect.value = config.generator;
+        }
+        
+        // Set power generators
+        if (config.powerGenerators) {
+            document.getElementById('basic-large-generators').value = config.powerGenerators.basicLarge || 0;
+            document.getElementById('improved-large-generators').value = config.powerGenerators.improvedLarge || 0;
+            document.getElementById('advanced-large-generators').value = config.powerGenerators.advancedLarge || 0;
+        }
+        
+        // Set reactors
+        document.getElementById('small-reactor-count').value = config.reactors.small || 0;
+        document.getElementById('large-reactor-count').value = config.reactors.large || 0;
+        
+        // Set extenders
+        if (config.extenders) {
+            // Advanced
+            const advCapEl = document.getElementById('advanced-capacitors');
+            const advChgEl = document.getElementById('advanced-chargers');
+            if (advCapEl) advCapEl.value = config.extenders.advanced.capacitor || 0;
+            if (advChgEl) advChgEl.value = config.extenders.advanced.charger || 0;
+            
+            // Improved
+            const impCapEl = document.getElementById('improved-capacitors');
+            const impChgEl = document.getElementById('improved-chargers');
+            if (impCapEl) impCapEl.value = config.extenders.improved.capacitor || 0;
+            if (impChgEl) impChgEl.value = config.extenders.improved.charger || 0;
+            
+            // Basic
+            const basCapEl = document.getElementById('basic-capacitors');
+            const basChgEl = document.getElementById('basic-chargers');
+            if (basCapEl) basCapEl.value = config.extenders.basic.capacitor || 0;
+            if (basChgEl) basChgEl.value = config.extenders.basic.charger || 0;
+        }
+        
+        // Set blocks
+        if (config.blocks) {
+            const steelEl = document.getElementById('steel-blocks-live');
+            const hardenedEl = document.getElementById('hardened-steel-blocks-live');
+            const combatEl = document.getElementById('combat-steel-blocks-live');
+            const xenoEl = document.getElementById('xeno-steel-blocks-live');
+            
+            if (steelEl) steelEl.value = config.blocks.steel || 0;
+            if (hardenedEl) hardenedEl.value = config.blocks.hardenedSteel || 0;
+            if (combatEl) combatEl.value = config.blocks.combatSteel || 0;
+            if (xenoEl) xenoEl.value = config.blocks.xenoSteel || 0;
+        }
+        
+        // Set crew
+        if (config.crew) {
+            const technicianEl = document.getElementById('shield-technicians');
+            if (technicianEl) technicianEl.value = config.crew.shieldTechnician || 0;
+        }
+        
+        // Update component box states and live stats
+        this.updateComponentBoxStates();
+        this.updateLiveStats();
+    }
+    
+    // Build simple component table for export
+    buildSimpleComponentTable(config) {
+        const components = [];
+        
+        // Generator
+        if (config.generator && config.generator !== 'none') {
+            const gen = ComponentUtils.getComponent('generators', config.generator);
+            if (gen) components.push({ name: gen.name, quantity: 1 });
+        }
+        
+        // Power Generators
+        if (config.powerGenerators) {
+            for (const [type, count] of Object.entries(config.powerGenerators)) {
+                if (count > 0) {
+                    const gen = ComponentUtils.getComponent('powerGenerators', type);
+                    if (gen) components.push({ name: gen.name, quantity: count });
+                }
+            }
+        }
+        
+        // Reactors
+        if (config.reactors.small > 0) {
+            const reactor = ComponentUtils.getComponent('reactors', 'small');
+            if (reactor) components.push({ name: reactor.name, quantity: config.reactors.small });
+        }
+        if (config.reactors.large > 0) {
+            const reactor = ComponentUtils.getComponent('reactors', 'large');
+            if (reactor) components.push({ name: reactor.name, quantity: config.reactors.large });
+        }
+        
+        // Extenders
+        for (const tier in config.extenders) {
+            if (config.extenders[tier].capacitor > 0) {
+                const component = ComponentUtils.getComponent('extenders', tier).capacitor;
+                components.push({ name: component.name, quantity: config.extenders[tier].capacitor });
+            }
+            if (config.extenders[tier].charger > 0) {
+                const component = ComponentUtils.getComponent('extenders', tier).charger;
+                components.push({ name: component.name, quantity: config.extenders[tier].charger });
+            }
+        }
+        
+        // Blocks
+        if (config.blocks) {
+            for (const [type, count] of Object.entries(config.blocks)) {
+                if (count > 0) {
+                    const block = ComponentUtils.getComponent('blocks', type);
+                    if (block) components.push({ name: block.name, quantity: count });
+                }
+            }
+        }
+        
+        // Crew
+        if (config.crew) {
+            for (const [type, count] of Object.entries(config.crew)) {
+                if (count > 0) {
+                    const crewMember = ComponentUtils.getComponent('crew', type);
+                    if (crewMember) components.push({ name: crewMember.name, quantity: count });
+                }
+            }
+        }
+        
+        // Build simple table HTML
+        if (components.length === 0) {
+            return '<p>No components required</p>';
+        }
+        
+        let tableHTML = '<table style="width: 100%; border-collapse: collapse;">';
+        components.forEach(comp => {
+            tableHTML += `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${comp.quantity}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${comp.name}</td>
+                </tr>
+            `;
+        });
+        tableHTML += '</table>';
+        
+        return tableHTML;
+    }
+    
+    // Generate and download HTML report
+    generateAndDownloadReport(data) {
+        const reportHTML = this.createReportTemplate(data);
+        
+        // Create blob and download
+        const blob = new Blob([reportHTML], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `shield-configuration-${Date.now()}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+        
+        this.showSuccess('Configuration exported successfully!');
+    }
+    
+    // Create self-contained HTML report template
+    createReportTemplate(data) {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shield Configuration Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .report-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .report-header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .report-header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .report-content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stat-item label {
+            font-weight: 600;
+            color: #555;
+        }
+        .stat-item span {
+            font-weight: 500;
+            color: #333;
+        }
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .component-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            transition: transform 0.2s;
+        }
+        .component-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .component-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .component-quantity {
+            font-size: 1.1em;
+            color: #667eea;
+            font-weight: 500;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9em;
+            border-top: 1px solid #e0e0e0;
+        }
+        .notification {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .notification.is-success {
+            background-color: #d1edff;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .components-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="report-header">
+            <h1>🛡️ Shield Configuration</h1>
+            <p>${data.type}</p>
+            <p>Generated: ${data.generatedAt}</p>
+        </div>
+        
+        <div class="report-content">
+            ${data.stats ? `
+            <div class="section">
+                <h2>📊 Performance Stats</h2>
+                ${data.stats}
+            </div>
+            ` : ''}
+            
+            <div class="section">
+                <h2>🔧 Required Components</h2>
+                ${data.components}
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Generated by Shield Utility - <a href="https://github.com/yourusername/shield-utility">https://github.com/yourusername/shield-utility</a></p>
+        </div>
+    </div>
+</body>
+</html>`;
+    }
+    
 }

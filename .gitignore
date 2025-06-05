@@ -1,0 +1,39 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories and files
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+
+# Build output (if any future build process is added)
+dist/
+build/
+
+# Dependencies (if any future package manager is added)
+node_modules/
+bower_components/
+
+# Local environment files
+.env.local
+.env.*.local
+
+# Screenshot placeholder (if not committed)
+shield-utility-screenshot.png

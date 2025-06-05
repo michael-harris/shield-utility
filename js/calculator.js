@@ -165,11 +165,26 @@ class ShieldUtility {
             });
         }
         
+        // Only warn about power if there aren't sufficient power generators
         if (stats.power > 0) {
-            warnings.push({
-                type: 'power',
-                message: `Configuration requires ${ComponentUtils.formatPower(stats.power)} of external power.`
-            });
+            let totalPowerGeneration = 0;
+            if (configuration.powerGenerators) {
+                for (const genType in configuration.powerGenerators) {
+                    const count = configuration.powerGenerators[genType];
+                    if (count > 0 && this.components.powerGenerators[genType]) {
+                        totalPowerGeneration += Math.abs(this.components.powerGenerators[genType].power) * count;
+                    }
+                }
+            }
+            
+            // Only add warning if power generators don't cover the requirement
+            if (totalPowerGeneration < stats.power) {
+                const remainingPower = stats.power - totalPowerGeneration;
+                warnings.push({
+                    type: 'power',
+                    message: `Configuration requires ${ComponentUtils.formatPower(remainingPower)} of additional external power.`
+                });
+            }
         }
         
         // Check extender limits
@@ -204,40 +219,19 @@ class ShieldUtility {
         const maxSmallReactors = constraints.noFusionReactors ? 0 : (constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 4);
         const maxLargeReactors = constraints.noFusionReactors ? 0 : (constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 2);
         
-        // Calculate theoretical maximum capacity with all capacitors
-        const maxCapacityConfig = {
-            generator: 'advanced',
-            reactors: {
-                small: maxSmallReactors,
-                large: maxLargeReactors
-            },
-            extenders: {
-                advanced: { capacitor: maxAdvanced, charger: 0 },
-                improved: { capacitor: maxImproved, charger: 0 },
-                basic: { capacitor: maxBasic, charger: 0 }
-            },
-            blocks: constraints.blocks || {},
-            crew: constraints.crew || {}
-        };
+        // Find maximum achievable capacity while maintaining positive recharge
+        const maxCapacityConfig = this.findMaxCapacityWithPositiveRecharge(
+            maxAdvanced, maxImproved, maxBasic, maxSmallReactors, maxLargeReactors, constraints
+        );
         
-        // Calculate theoretical maximum recharge with all chargers
-        const maxRechargeConfig = {
-            generator: 'advanced',
-            reactors: {
-                small: maxSmallReactors,
-                large: maxLargeReactors
-            },
-            extenders: {
-                advanced: { capacitor: 0, charger: maxAdvanced },
-                improved: { capacitor: 0, charger: maxImproved },
-                basic: { capacitor: 0, charger: maxBasic }
-            },
-            blocks: constraints.blocks || {},
-            crew: constraints.crew || {}
-        };
+        // Find maximum achievable recharge while maintaining positive capacity  
+        const maxRechargeConfig = this.findMaxRechargeWithPositiveCapacity(
+            maxAdvanced, maxImproved, maxBasic, maxSmallReactors, maxLargeReactors, constraints
+        );
         
         const maxCapacityStats = this.calculateStats(maxCapacityConfig);
         const maxRechargeStats = this.calculateStats(maxRechargeConfig);
+        
         
         // Check if targets are achievable
         return {
@@ -310,5 +304,93 @@ class ShieldUtility {
     // Clone configuration
     cloneConfiguration(config) {
         return JSON.parse(JSON.stringify(config));
+    }
+    
+    // Find maximum capacity while maintaining positive recharge
+    findMaxCapacityWithPositiveRecharge(maxAdvanced, maxImproved, maxBasic, maxSmallReactors, maxLargeReactors, constraints) {
+        const baseConfig = {
+            generator: 'advanced',
+            reactors: {
+                small: maxSmallReactors,
+                large: maxLargeReactors
+            },
+            extenders: {
+                advanced: { capacitor: 0, charger: 0 },
+                improved: { capacitor: 0, charger: 0 },
+                basic: { capacitor: 0, charger: 0 }
+            },
+            blocks: constraints.blocks || {},
+            crew: constraints.crew || {}
+        };
+        
+        // Start with base stats and add capacitors greedily while keeping recharge > 0
+        let bestConfig = this.cloneConfiguration(baseConfig);
+        
+        // Try adding capacitors in order of efficiency (advanced -> improved -> basic)
+        const tierOrder = [
+            { tier: 'advanced', max: maxAdvanced, capacity: 32000, recharge: -600 },
+            { tier: 'improved', max: maxImproved, capacity: 16000, recharge: -300 },
+            { tier: 'basic', max: maxBasic, capacity: 8000, recharge: -150 }
+        ];
+        
+        for (const tierInfo of tierOrder) {
+            for (let count = 1; count <= tierInfo.max; count++) {
+                const testConfig = this.cloneConfiguration(bestConfig);
+                testConfig.extenders[tierInfo.tier].capacitor = count;
+                
+                const testStats = this.calculateStats(testConfig);
+                if (testStats.recharge > 0) {
+                    bestConfig = testConfig;
+                } else {
+                    break; // Stop adding this tier if recharge goes negative
+                }
+            }
+        }
+        
+        return bestConfig;
+    }
+    
+    // Find maximum recharge while maintaining positive capacity
+    findMaxRechargeWithPositiveCapacity(maxAdvanced, maxImproved, maxBasic, maxSmallReactors, maxLargeReactors, constraints) {
+        const baseConfig = {
+            generator: 'advanced',
+            reactors: {
+                small: maxSmallReactors,
+                large: maxLargeReactors
+            },
+            extenders: {
+                advanced: { capacitor: 0, charger: 0 },
+                improved: { capacitor: 0, charger: 0 },
+                basic: { capacitor: 0, charger: 0 }
+            },
+            blocks: constraints.blocks || {},
+            crew: constraints.crew || {}
+        };
+        
+        // Start with base stats and add chargers greedily while keeping capacity > 0
+        let bestConfig = this.cloneConfiguration(baseConfig);
+        
+        // Try adding chargers in order of efficiency (advanced -> improved -> basic)
+        const tierOrder = [
+            { tier: 'advanced', max: maxAdvanced, capacity: -16000, recharge: 1200 },
+            { tier: 'improved', max: maxImproved, capacity: -8000, recharge: 600 },
+            { tier: 'basic', max: maxBasic, capacity: -4000, recharge: 300 }
+        ];
+        
+        for (const tierInfo of tierOrder) {
+            for (let count = 1; count <= tierInfo.max; count++) {
+                const testConfig = this.cloneConfiguration(bestConfig);
+                testConfig.extenders[tierInfo.tier].charger = count;
+                
+                const testStats = this.calculateStats(testConfig);
+                if (testStats.capacity > 0) {
+                    bestConfig = testConfig;
+                } else {
+                    break; // Stop adding this tier if capacity goes negative
+                }
+            }
+        }
+        
+        return bestConfig;
     }
 }
