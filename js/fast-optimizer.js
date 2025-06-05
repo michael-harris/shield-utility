@@ -247,12 +247,25 @@ class FastShieldOptimizer {
                 break;
                 
             case 'max-recharge':
-                // Configs with recharge time <= 15 seconds, then highest capacity
+                // Configs with recharge time <= 15 seconds
                 const fastRecharge = candidates.filter(config => config[15] <= 15); // rechargeTime index
                 if (fastRecharge.length > 0) {
-                    sortedCandidates = fastRecharge.sort((a, b) => b[11] - a[11]);
+                    // Sort by: 1) Highest capacity, 2) Lowest CPU, 3) Lowest recharge time
+                    sortedCandidates = fastRecharge.sort((a, b) => {
+                        // Primary: Highest capacity
+                        const capacityDiff = b[11] - a[11]; // capacity index (descending)
+                        if (capacityDiff !== 0) return capacityDiff;
+                        
+                        // Secondary: Lowest CPU usage
+                        const cpuDiff = a[13] - b[13]; // cpu index (ascending)
+                        if (cpuDiff !== 0) return cpuDiff;
+                        
+                        // Tertiary: Lowest recharge time
+                        return a[15] - b[15]; // rechargeTime index (ascending)
+                    });
                 } else {
-                    sortedCandidates = candidates.sort((a, b) => a[15] - b[15]); // Fastest recharge
+                    // Fallback: No configs with <=15s recharge, so find fastest recharge
+                    sortedCandidates = candidates.sort((a, b) => a[15] - b[15]);
                 }
                 break;
                 
