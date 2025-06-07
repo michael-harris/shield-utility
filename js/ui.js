@@ -14,6 +14,7 @@ class UIController {
         this.updateLiveStats();
         this.initializeInputValidation();
         this.updateStrategyHelp(); // Initialize target values state
+        this.ensureExportActionsVisible(); // Ensure export action boxes are always visible
     }
     
     // Initialize all event listeners
@@ -528,8 +529,7 @@ class UIController {
             'calculator-stats-box',
             'required-components-box',
             'included-bonuses-box',
-            'applied-constraints-box',
-            'calculator-export-actions'
+            'applied-constraints-box'
         ];
         
         boxesToHide.forEach(boxId => {
@@ -538,6 +538,19 @@ class UIController {
                 box.classList.add('is-hidden');
             }
         });
+    }
+    
+    // Ensure export action boxes are always visible
+    ensureExportActionsVisible() {
+        const calculatorExportActions = document.getElementById('calculator-export-actions');
+        const explorerExportActions = document.getElementById('explorer-export-actions');
+        
+        if (calculatorExportActions) {
+            calculatorExportActions.classList.remove('is-hidden');
+        }
+        if (explorerExportActions) {
+            explorerExportActions.classList.remove('is-hidden');
+        }
     }
     
     // Calculate optimal configuration
