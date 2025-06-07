@@ -402,9 +402,10 @@ body {
 }
 
 /* Chart Container */
-#statsChart {
+#statsChart, #calculatorStatsChart {
     max-width: 100%;
     height: auto;
+    min-height: 400px;
 }
 
 /* Component Icons */
@@ -497,25 +498,7 @@ body {
 
 /* Build inventory box */
 #build-inventory {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-#build-inventory::-webkit-scrollbar {
-    width: 6px;
-}
-
-#build-inventory::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
-}
-
-#build-inventory::-webkit-scrollbar-thumb {
-    background: var(--accent-primary);
-    border-radius: 3px;
-}
-
-#build-inventory::-webkit-scrollbar-thumb:hover {
-    background: #00b89c;
+    /* Removed max-height and overflow constraints to show all items */
 }
 
 /* Disabled state for component boxes */
@@ -656,4 +639,133 @@ body {
     margin-bottom: 10px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     border-radius: 6px;
+}
+
+/* Help Popover */
+.help-popover {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9998;
+    padding: 20px;
+}
+
+.help-popover-content {
+    background-color: var(--bg-secondary);
+    border: 2px solid var(--accent-primary);
+    border-radius: 12px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 209, 178, 0.3);
+}
+
+.help-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 20px 10px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.help-popover-title {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.help-popover-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.help-popover-close:hover {
+    color: var(--accent-secondary);
+    background-color: rgba(255, 56, 96, 0.1);
+}
+
+.help-popover-body {
+    padding: 20px;
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.help-popover-body h3 {
+    color: var(--accent-primary);
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.75rem 0;
+}
+
+.help-popover-body h3:first-child {
+    margin-top: 0;
+}
+
+.help-popover-body ul {
+    margin: 0.75rem 0;
+    padding-left: 1.5rem;
+}
+
+.help-popover-body li {
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.help-popover-body strong {
+    color: var(--text-primary);
+}
+
+.help-popover-body .help-tip {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 1rem 0;
+    border-left: 4px solid var(--accent-primary);
+}
+
+.help-popover-body .help-tip strong {
+    color: var(--accent-primary);
+}
+
+/* Mobile responsiveness for help popover */
+@media screen and (max-width: 768px) {
+    .help-popover {
+        padding: 10px;
+    }
+    
+    .help-popover-content {
+        max-width: 100%;
+        max-height: 90vh;
+    }
+    
+    .help-popover-header {
+        padding: 15px 15px 10px 15px;
+    }
+    
+    .help-popover-body {
+        padding: 15px;
+    }
+    
+    .help-popover-title {
+        font-size: 1.3rem;
+    }
 }

@@ -9,13 +9,13 @@ class PreCalculationEngine {
         this.isReady = false;
     }
     
-    // Calculate all core configurations (generator + reactors + power generators)
+    // Calculate all core configurations (generator + reactors for recharge only)
+    // Power generators will be calculated separately based on actual power needs
     // Extenders will be calculated on-demand for better performance
     async generateCoreConfigurations() {
         const start = performance.now();
         
         const generators = ['compact', 'standard', 'advanced'];
-        const maxPowerGens = 4; // Reasonable limit for power generators
         const maxSmallReactors = 4;
         const maxLargeReactors = 2;
         
@@ -23,74 +23,28 @@ class PreCalculationEngine {
         let configId = 0;
         
         for (const generator of generators) {
-            // Try all fusion reactor combinations
+            // Try all fusion reactor combinations (for recharge only)
             for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
                 for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
                     
-                    // Configuration with fusion reactors only
-                    if (smallReactors > 0 || largeReactors > 0) {
-                        const config = {
-                            id: configId++,
-                            generator: generator,
-                            reactors: { small: smallReactors, large: largeReactors },
-                            powerGenerators: { basicLarge: 0, improvedLarge: 0, advancedLarge: 0 },
-                            extenders: { advanced: { capacitor: 0, charger: 0 }, improved: { capacitor: 0, charger: 0 }, basic: { capacitor: 0, charger: 0 } },
-                            blocks: {},
-                            crew: {}
-                        };
-                        
-                        const stats = this.calculator.calculateStats(config);
-                        configurations.push({
-                            id: config.id,
-                            config: config,
-                            baseStats: stats,
-                            type: 'fusion'
-                        });
-                    }
+                    // Shield-only configuration (no power generators - they'll be added later based on need)
+                    const config = {
+                        id: configId++,
+                        generator: generator,
+                        reactors: { small: smallReactors, large: largeReactors },
+                        powerGenerators: { advancedLarge: 0, improvedLarge: 0 },
+                        extenders: { advanced: { capacitor: 0, charger: 0 }, improved: { capacitor: 0, charger: 0 }, basic: { capacitor: 0, charger: 0 } },
+                        blocks: {},
+                        crew: {}
+                    };
                     
-                    // Configuration with power generators only (no fusion)
-                    if (smallReactors === 0 && largeReactors === 0) {
-                        for (let basicGens = 0; basicGens <= maxPowerGens; basicGens++) {
-                            for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
-                                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
-                                    // Skip empty power generator configs
-                                    if (basicGens === 0 && improvedGens === 0 && advancedGens === 0) continue;
-                                    
-                                    const config = {
-                                        id: configId++,
-                                        generator: generator,
-                                        reactors: { small: 0, large: 0 },
-                                        powerGenerators: { 
-                                            basicLarge: basicGens, 
-                                            improvedLarge: improvedGens, 
-                                            advancedLarge: advancedGens 
-                                        },
-                                        extenders: { advanced: { capacitor: 0, charger: 0 }, improved: { capacitor: 0, charger: 0 }, basic: { capacitor: 0, charger: 0 } },
-                                        blocks: {},
-                                        crew: {}
-                                    };
-                                    
-                                    const stats = this.calculator.calculateStats(config);
-                                    
-                                    // Only include if power is sustainable (≤ 50% utilization for generators)
-                                    if (stats.power <= 0) {
-                                        const totalPowerGeneration = (advancedGens * 100000) + (improvedGens * 25000) + (basicGens * 10000);
-                                        const shieldPowerRequirement = totalPowerGeneration + stats.power;
-                                        const utilizationPercent = shieldPowerRequirement / totalPowerGeneration;
-                                        
-                                        if (utilizationPercent <= 0.5) {
-                                            configurations.push({
-                                                id: config.id,
-                                                config: config,
-                                                baseStats: stats,
-                                                type: 'generator'
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    const stats = this.calculator.calculateStats(config);
+                    configurations.push({
+                        id: config.id,
+                        config: config,
+                        baseStats: stats,
+                        type: (smallReactors > 0 || largeReactors > 0) ? 'fusion' : 'basic'
+                    });
                 }
             }
         }
@@ -211,7 +165,7 @@ class PreCalculationEngine {
         let bestScore = -1;
         
         // Smart extender optimization - try key combinations rather than exhaustive search
-        const extenderCombinations = this.generateSmartExtenderCombinations(
+        const extenderCombinations = this.generateExtenderCombos(
             maxAdvanced, maxImproved, maxBasic, 
             coreConfig.baseStats, targetCapacity, targetRecharge
         );
@@ -229,7 +183,7 @@ class PreCalculationEngine {
             const validation = this.calculator.validateConfiguration(fullConfig, constraints);
             
             // Check if configuration meets strategy requirements
-            if (!this.meetsStrategyRequirements(strategy, stats, targetCapacity, targetRecharge, validation)) {
+            if (!this.meetsRequirements(strategy, stats, targetCapacity, targetRecharge, validation)) {
                 continue;
             }
             
@@ -252,7 +206,7 @@ class PreCalculationEngine {
     }
     
     // Generate smart extender combinations based on targets
-    generateSmartExtenderCombinations(maxAdvanced, maxImproved, maxBasic, baseStats, targetCapacity, targetRecharge) {
+    generateExtenderCombos(maxAdvanced, maxImproved, maxBasic, baseStats, targetCapacity, targetRecharge) {
         const combinations = [];
         
         // Calculate needed capacity and recharge
@@ -303,7 +257,7 @@ class PreCalculationEngine {
     }
     
     // Check if configuration meets strategy requirements
-    meetsStrategyRequirements(strategy, stats, targetCapacity, targetRecharge, validation) {
+    meetsRequirements(strategy, stats, targetCapacity, targetRecharge, validation) {
         // Must pass validation
         if (!validation.valid && validation.warnings.length > 0) {
             return false;
@@ -356,40 +310,5 @@ class PreCalculationEngine {
                 
                 return score;
         }
-    }
-    
-    // Save pre-calculated data to external file
-    async saveToFile() {
-        const data = {
-            coreConfigurations: this.coreConfigurations,
-            generatedAt: new Date().toISOString(),
-            version: '1.0'
-        };
-        
-        // In a real implementation, this would save to a file
-        // For web context, we'll use localStorage as a fallback
-        try {
-            localStorage.setItem('shieldOptimizationCache', JSON.stringify(data));
-        } catch (e) {
-        }
-        
-        return data;
-    }
-    
-    // Load pre-calculated data from external file
-    async loadFromFile() {
-        try {
-            const data = localStorage.getItem('shieldOptimizationCache');
-            if (data) {
-                const parsed = JSON.parse(data);
-                this.coreConfigurations = parsed.coreConfigurations;
-                this.buildLookupTable();
-                this.isReady = true;
-                return true;
-            }
-        } catch (e) {
-        }
-        
-        return false;
     }
 }

@@ -56,14 +56,48 @@ class UIController {
             exportExplorerBtn.addEventListener('click', () => this.exportExplorerConfiguration());
         }
         
+        const findMostEfficientBtn = document.getElementById('find-most-efficient-btn');
+        if (findMostEfficientBtn) {
+            findMostEfficientBtn.addEventListener('click', () => this.findMostEfficient());
+        }
+        
         const editInExplorerBtn = document.getElementById('edit-in-explorer-btn');
         if (editInExplorerBtn) {
             editInExplorerBtn.addEventListener('click', () => this.editInExplorer());
         }
         
+        // Help buttons
+        const helpCalculatorBtn = document.getElementById('help-calculator-btn');
+        if (helpCalculatorBtn) {
+            helpCalculatorBtn.addEventListener('click', () => this.showHelp('calculator'));
+        }
+        
+        const helpExplorerBtn = document.getElementById('help-explorer-btn');
+        if (helpExplorerBtn) {
+            helpExplorerBtn.addEventListener('click', () => this.showHelp('explorer'));
+        }
+        
+        // Help popover close button
+        const helpPopoverClose = document.getElementById('help-popover-close');
+        if (helpPopoverClose) {
+            helpPopoverClose.addEventListener('click', () => this.hideHelp());
+        }
+        
+        // Close help popover when clicking outside
+        const helpPopover = document.getElementById('help-popover');
+        if (helpPopover) {
+            helpPopover.addEventListener('click', (e) => {
+                if (e.target === helpPopover) {
+                    this.hideHelp();
+                }
+            });
+        }
+        
         // Block inputs for value-to-component mode
         document.querySelectorAll('.block-input').forEach(input => {
-            input.addEventListener('input', () => this.updateBlockCapacity());
+            input.addEventListener('input', () => {
+                // Block input listener (no longer updates block capacity display)
+            });
         });
         
         // Live inputs for component-to-value mode
@@ -120,7 +154,10 @@ class UIController {
         if (mode === 'component-to-value') {
             setTimeout(() => {
                 this.initializeChart();
-                this.updateLiveStats();
+                // Only update live stats if we're not in the middle of editing in explorer
+                if (!this.isEditingInExplorer) {
+                    this.updateLiveStats();
+                }
             }, 100);
         }
     }
@@ -209,21 +246,6 @@ class UIController {
         }
     }
     
-    // Update block capacity display
-    updateBlockCapacity() {
-        const blocks = {
-            steel: parseInt(document.getElementById('steel-blocks').value) || 0,
-            hardenedSteel: parseInt(document.getElementById('hardened-steel-blocks').value) || 0,
-            combatSteel: parseInt(document.getElementById('combat-steel-blocks').value) || 0,
-            xenoSteel: parseInt(document.getElementById('xeno-steel-blocks').value) || 0
-        };
-        
-        const totalCapacity = this.calculator.calculateBlockCapacity(blocks);
-        const displayElement = document.getElementById('total-block-capacity');
-        if (displayElement) {
-            displayElement.textContent = ComponentUtils.formatNumber(totalCapacity);
-        }
-    }
     
     // Update strategy help text
     updateStrategyHelp() {
@@ -275,7 +297,6 @@ class UIController {
             if (!isCpuEfficiency) {
                 targetCapacityInput.value = '';
                 targetRechargeInput.value = '';
-                this.updateBlockCapacity();
             }
         }
     }
@@ -303,6 +324,9 @@ class UIController {
         
         // Update inventory
         this.updateInventory(config, stats);
+        
+        // Update explorer action buttons based on configuration
+        this.updateExplorerActionButtons();
     }
     
     // Update individual stat display
@@ -503,6 +527,7 @@ class UIController {
         const boxesToHide = [
             'calculator-stats-box',
             'required-components-box',
+            'included-bonuses-box',
             'applied-constraints-box',
             'calculator-export-actions'
         ];
@@ -573,18 +598,9 @@ class UIController {
             // Calculate bonus stats from blocks and crew
             const bonusStats = this.calculateBonusStats(existingBlocks, existingCrew);
             
-            // If user entered targets, subtract bonus stats from targets for optimization
-            if (hasTargets) {
-                if (targetCapacity) {
-                    targetCapacity = Math.max(1, targetCapacity - bonusStats.capacity);
-                }
-                if (targetRecharge) {
-                    targetRecharge = Math.max(1, targetRecharge - bonusStats.recharge);
-                }
-            }
-            
             // Get strategy and constraints
             const strategy = document.getElementById('optimization-strategy').value;
+            const considerPowerUsage = document.getElementById('consider-power-usage').checked;
             const constraints = {
                 cpuLimit: parseInt(document.getElementById('cpu-limit').value) || null,
                 powerLimit: parseInt(document.getElementById('power-limit').value) || null,
@@ -593,14 +609,33 @@ class UIController {
                 maxImprovedExtenders: parseInt(document.getElementById('max-improved-extenders').value),
                 maxBasicExtenders: parseInt(document.getElementById('max-basic-extenders').value),
                 maxSmallReactors: parseInt(document.getElementById('max-small-reactors').value),
-                maxLargeReactors: parseInt(document.getElementById('max-large-reactors').value)
+                maxLargeReactors: parseInt(document.getElementById('max-large-reactors').value),
+                considerPowerUsage: considerPowerUsage
             };
             
             // Perform optimization
             let result;
             if (hasTargets) {
-                // User specified targets: use adjusted targets and include blocks/crew in optimization
-                result = await this.optimizer.optimize(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew, strategy);
+                // User specified targets: subtract bonus stats from targets for optimization
+                const adjustedTargetCapacity = targetCapacity ? Math.max(1, targetCapacity - bonusStats.capacity) : null;
+                const adjustedTargetRecharge = targetRecharge ? Math.max(1, targetRecharge - bonusStats.recharge) : null;
+                // Optimize for adjusted targets without blocks/crew, then add bonuses back
+                result = await this.optimizer.optimize(adjustedTargetCapacity, adjustedTargetRecharge, constraints, {}, {}, strategy);
+                if (result.success) {
+                    result.stats.capacity += bonusStats.capacity;
+                    result.stats.recharge += bonusStats.recharge;
+                    // Include blocks/crew in the final configuration for display
+                    if (Object.values(existingBlocks).some(count => count > 0)) {
+                        result.configuration.blocks = existingBlocks;
+                    } else {
+                        result.configuration.blocks = {};
+                    }
+                    if (Object.values(existingCrew).some(count => count > 0)) {
+                        result.configuration.crew = existingCrew;
+                    } else {
+                        result.configuration.crew = {};
+                    }
+                }
             } else {
                 // No targets specified: optimize without blocks/crew, then add bonus stats to result
                 result = await this.optimizer.optimize(null, null, constraints, {}, {}, strategy);
@@ -610,9 +645,13 @@ class UIController {
                     // Include blocks/crew in the final configuration for display
                     if (Object.values(existingBlocks).some(count => count > 0)) {
                         result.configuration.blocks = existingBlocks;
+                    } else {
+                        result.configuration.blocks = {};
                     }
                     if (Object.values(existingCrew).some(count => count > 0)) {
                         result.configuration.crew = existingCrew;
+                    } else {
+                        result.configuration.crew = {};
                     }
                 }
             }
@@ -662,14 +701,32 @@ class UIController {
         // Populate Required Components (pass result for scaled-down message)
         this.populateRequiredComponents(config, result.strategy, result);
         
+        // Populate Included Bonuses with current form values, not optimizer config
+        const currentBlocks = {
+            steel: parseInt(document.getElementById('steel-blocks').value) || 0,
+            hardenedSteel: parseInt(document.getElementById('hardened-steel-blocks').value) || 0,
+            combatSteel: parseInt(document.getElementById('combat-steel-blocks').value) || 0,
+            xenoSteel: parseInt(document.getElementById('xeno-steel-blocks').value) || 0
+        };
+        const currentCrew = {
+            shieldTechnicians: parseInt(document.getElementById('existing-shield-technicians').value) || 0
+        };
+        const bonusConfig = {
+            blocks: currentBlocks,
+            crew: currentCrew
+        };
+        this.populateIncludedBonuses(bonusConfig);
+        
         // Populate Applied Constraints
         this.populateAppliedConstraints();
         
-        // Show all result boxes
+        // Show result boxes (bonuses box is handled by populateIncludedBonuses)
         document.getElementById('calculator-stats-box').classList.remove('is-hidden');
         document.getElementById('required-components-box').classList.remove('is-hidden');
         document.getElementById('applied-constraints-box').classList.remove('is-hidden');
-        document.getElementById('calculator-export-actions').classList.remove('is-hidden');
+        
+        // Enable calculator action buttons now that we have results
+        this.enableCalculatorActionButtons();
         
         // Don't auto-reset form - let users experiment
     }
@@ -686,8 +743,84 @@ class UIController {
         // Hide all result boxes
         document.getElementById('calculator-stats-box').classList.add('is-hidden');
         document.getElementById('required-components-box').classList.add('is-hidden');
+        document.getElementById('included-bonuses-box').classList.add('is-hidden');
         document.getElementById('applied-constraints-box').classList.add('is-hidden');
-        document.getElementById('calculator-export-actions').classList.add('is-hidden');
+        
+        // Disable calculator action buttons since we have no results
+        this.disableCalculatorActionButtons();
+    }
+    
+    // Enable calculator action buttons (export and edit in explorer)
+    enableCalculatorActionButtons() {
+        const exportBtn = document.getElementById('export-calculator-btn');
+        const editBtn = document.getElementById('edit-in-explorer-btn');
+        
+        if (exportBtn) {
+            exportBtn.disabled = false;
+        }
+        if (editBtn) {
+            editBtn.disabled = false;
+        }
+    }
+    
+    // Disable calculator action buttons
+    disableCalculatorActionButtons() {
+        const exportBtn = document.getElementById('export-calculator-btn');
+        const editBtn = document.getElementById('edit-in-explorer-btn');
+        
+        if (exportBtn) {
+            exportBtn.disabled = true;
+        }
+        if (editBtn) {
+            editBtn.disabled = true;
+        }
+    }
+    
+    // Update explorer action buttons based on current configuration
+    updateExplorerActionButtons() {
+        const config = this.getCurrentConfiguration();
+        const hasGenerator = config && config.generator && config.generator !== 'none';
+        
+        const exportBtn = document.getElementById('export-explorer-btn');
+        const efficiencyBtn = document.getElementById('find-most-efficient-btn');
+        
+        if (exportBtn) {
+            exportBtn.disabled = !hasGenerator;
+        }
+        if (efficiencyBtn) {
+            efficiencyBtn.disabled = !hasGenerator;
+        }
+    }
+    
+    // Check if config has any components
+    configHasAnyComponents(config) {
+        if (!config) return false;
+        
+        // Check if there's a shield generator
+        if (config.generator && config.generator !== 'none') {
+            return true;
+        }
+        
+        // Check power generators
+        if (config.powerGenerators && Object.values(config.powerGenerators).some(count => count > 0)) {
+            return true;
+        }
+        
+        // Check reactors
+        if (config.reactors && (config.reactors.small > 0 || config.reactors.large > 0)) {
+            return true;
+        }
+        
+        // Check extenders
+        if (config.extenders) {
+            for (const tier in config.extenders) {
+                if (config.extenders[tier].capacitor > 0 || config.extenders[tier].charger > 0) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
     
     // Create component card HTML (for calculator results - uses same format as inventory)
@@ -791,6 +924,7 @@ class UIController {
                         beginAtZero: true,
                         max: 100,
                         ticks: {
+                            stepSize: 25,
                             color: '#b5b5b5',
                             backdropColor: 'transparent'
                         },
@@ -904,6 +1038,41 @@ class UIController {
         return components.generators.compact.cpu; // 20,000
     }
     
+    // Calculate shield components power consumption from configuration
+    calculateShieldPowerConsumption(config) {
+        if (!config) return 0;
+        
+        let totalPower = 0;
+        
+        // Add generator power consumption (NOT power generation - just the shield generator's power cost)
+        if (config.generator && config.generator !== 'none' && components.generators[config.generator]) {
+            totalPower += components.generators[config.generator].power;
+        }
+        
+        // Add extender power consumption
+        if (config.extenders) {
+            for (const tier in config.extenders) {
+                const extenderData = components.extenders[tier];
+                if (extenderData) {
+                    // Add capacitor power cost
+                    if (config.extenders[tier].capacitor > 0) {
+                        totalPower += extenderData.capacitor.power * config.extenders[tier].capacitor;
+                    }
+                    // Add charger power cost
+                    if (config.extenders[tier].charger > 0) {
+                        totalPower += extenderData.charger.power * config.extenders[tier].charger;
+                    }
+                }
+            }
+        }
+        
+        // Do NOT include power generators or fusion reactors - they are not shield components
+        // We only care about the power COST of shield parts, not power generation
+        
+        return totalPower;
+    }
+    
+    
     // Calculate maximum CPU (Advanced shield + 1 Large reactor + all extenders within limits)
     calculateMaxCPU() {
         let maxCPU = components.generators.advanced.cpu; // 45,000
@@ -960,16 +1129,32 @@ class UIController {
             stats.cpu <= minCPU ? 100 :
             Math.max(0, Math.min(100, 100 - ((stats.cpu - minCPU) / (maxCPU - minCPU)) * 100)),
             
-            // Power Efficiency: 100% = power surplus <= 50kW, 0% = power required (positive)
-            // If no components selected (power = 0), show 0% efficiency (no shield = no efficiency)
-            stats.power === 0 ? 0 :
-            stats.power > 0 ? 0 :  // Positive power (required) = 0% efficiency
-            // Negative power means surplus - calculate efficiency based on surplus amount
+            // Power Efficiency: Based on shield components power consumption
+            // 100% efficiency = Compact Shield Generator only (10,000W)
+            // 0% efficiency = Advanced Shield + all extenders (169,000W)
             (() => {
-                const surplus = Math.abs(stats.power);
-                if (surplus <= 50000) return 100;
-                if (surplus >= 300000) return 0;
-                return Math.max(0, 100 - ((surplus - 50000) / 250000) * 100);
+                try {
+                    // Get current configuration to calculate shield power consumption
+                    const config = this.getCurrentConfiguration();
+                    if (!config || !config.generator || config.generator === 'none') return 0;
+                    
+                    const shieldPower = this.calculateShieldPowerConsumption(config);
+                    
+                    // Define min and max power consumption for shield components only
+                    const minPower = 10000;  // Compact shield generator only
+                    const maxPower = 169000; // Advanced shield generator + all extenders maxed
+                    
+                    if (shieldPower === 0) return 0; // No shield components
+                    if (shieldPower <= minPower) return 100; // Most efficient
+                    if (shieldPower >= maxPower) return 0; // Least efficient
+                    
+                    // Calculate efficiency (inverted scale - lower power consumption = higher efficiency)
+                    const efficiency = 100 - ((shieldPower - minPower) / (maxPower - minPower)) * 100;
+                    return Math.max(0, Math.min(100, Math.round(efficiency)));
+                } catch (e) {
+                    console.error('Error calculating power efficiency:', e);
+                    return 0;
+                }
             })()
         ];
         
@@ -977,19 +1162,23 @@ class UIController {
         this.chart.update('none');
         
         // Update strategy display
-        this.updateStrategyDisplay(normalizedData[0], normalizedData[1]);
+        this.updateStrategyDisplay(stats);
     }
     
-    // Determine and display result based on capacity and recharge percentages
-    updateStrategyDisplay(capacityPercent, rechargePercent) {
+    // Determine and display result based on recharge time
+    updateStrategyDisplay(stats) {
         let result = 'Balanced Capacity/Recharge';
         
-        const difference = capacityPercent - rechargePercent;
-        
-        if (difference > 15) {
-            result = 'High Capacity';
-        } else if (difference < -15) {
-            result = 'High Recharge';
+        if (stats.capacity > 0 && stats.recharge > 0) {
+            const rechargeTime = stats.capacity / stats.recharge;
+            
+            if (rechargeTime > 40) { // More than 35 + 5
+                result = 'High Capacity';
+            } else if (rechargeTime < 30) { // Less than 30
+                result = 'High Recharge';
+            } else {
+                result = 'Balanced Capacity/Recharge'; // 30-40 seconds (35 ± 5)
+            }
         }
         
         // Update or create result display
@@ -1071,22 +1260,6 @@ class UIController {
             }
         }
         
-        // Blocks
-        for (const blockType in config.blocks) {
-            if (config.blocks[blockType] > 0) {
-                const block = ComponentUtils.getComponent('blocks', blockType);
-                html += this.createInventoryItem(block, config.blocks[blockType]);
-                totalComponents += config.blocks[blockType];
-            }
-        }
-        
-        // Crew
-        if (config.crew && config.crew.shieldTechnicians > 0) {
-            const technician = ComponentUtils.getComponent('crew', 'shieldTechnician');
-            html += this.createInventoryItem(technician, config.crew.shieldTechnicians);
-            totalComponents += config.crew.shieldTechnicians;
-        }
-        
         if (totalComponents === 0) {
             html = '<div class="notification is-info is-light"><p>Select components to see your build here</p></div>';
         } else {
@@ -1099,10 +1272,67 @@ class UIController {
         
         inventoryContent.innerHTML = html;
         
-        // Show/hide explorer export button based on whether there are components
-        const exportActions = document.getElementById('explorer-export-actions');
-        if (exportActions) {
-            exportActions.style.display = totalComponents > 0 ? 'block' : 'none';
+        // Update explorer bonuses box
+        this.updateExplorerBonuses(config);
+        
+        // Export actions box is now always visible - buttons are enabled/disabled instead
+    }
+    
+    // Update Explorer Bonuses box
+    updateExplorerBonuses(config) {
+        const explorerBonusesContent = document.getElementById('explorer-included-bonuses-content');
+        if (!explorerBonusesContent) return;
+        
+        let html = '';
+        let totalBonusCapacity = 0;
+        let totalBonusRecharge = 0;
+        
+        // Blocks
+        if (config.blocks) {
+            for (const blockType in config.blocks) {
+                const count = config.blocks[blockType];
+                if (count > 0) {
+                    const block = ComponentUtils.getComponent('blocks', blockType);
+                    if (block) {
+                        html += this.createInventoryItem(block, count);
+                        totalBonusCapacity += block.capacity * count;
+                        totalBonusRecharge += (block.recharge || 0) * count;
+                    }
+                }
+            }
+        }
+        
+        // Crew
+        if (config.crew && config.crew.shieldTechnicians > 0) {
+            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician');
+            if (crew) {
+                html += this.createInventoryItem(crew, config.crew.shieldTechnicians);
+                totalBonusCapacity += crew.capacity * config.crew.shieldTechnicians;
+                totalBonusRecharge += crew.recharge * config.crew.shieldTechnicians;
+            }
+        }
+        
+        // Show/hide the entire bonuses box based on content
+        const bonusesBox = document.getElementById('explorer-included-bonuses-box');
+        const bonusSummary = document.getElementById('explorer-bonus-summary');
+        const bonusCapacitySpan = document.getElementById('explorer-bonus-capacity');
+        const bonusRechargeSpan = document.getElementById('explorer-bonus-recharge');
+        
+        if (totalBonusCapacity > 0 || totalBonusRecharge > 0) {
+            // Show the bonuses box and populate content
+            if (bonusesBox) bonusesBox.style.display = 'block';
+            explorerBonusesContent.innerHTML = html;
+            
+            // Update bonus summary box
+            if (bonusSummary && bonusCapacitySpan && bonusRechargeSpan) {
+                bonusCapacitySpan.textContent = ComponentUtils.formatNumber(totalBonusCapacity);
+                bonusRechargeSpan.textContent = ComponentUtils.formatNumber(totalBonusRecharge);
+                bonusSummary.style.display = 'block';
+            }
+        } else {
+            // Hide the entire bonuses box when empty
+            if (bonusesBox) bonusesBox.style.display = 'none';
+            if (bonusSummary) bonusSummary.style.display = 'none';
         }
     }
     
@@ -1186,6 +1416,7 @@ class UIController {
                         beginAtZero: true,
                         max: 100,
                         ticks: {
+                            stepSize: 25,
                             color: '#b5b5b5',
                             backdropColor: 'transparent'
                         },
@@ -1207,6 +1438,9 @@ class UIController {
     // Update calculator chart data
     updateCalculatorChart(stats) {
         if (!this.calculatorChart) return;
+        
+        // Store the last optimization result's configuration for power efficiency calculation
+        const config = this.lastOptimizationResult ? this.lastOptimizationResult.configuration : null;
         
         // Calculate theoretical maximums (same as explorer)
         const maxCapacity = this.calculateMaxCapacity();
@@ -1233,16 +1467,34 @@ class UIController {
             stats.cpu <= minCPU ? 100 :
             Math.max(0, Math.min(100, 100 - ((stats.cpu - minCPU) / (maxCPU - minCPU)) * 100)),
             
-            // Power Efficiency: 100% = power surplus <= 50kW, 0% = power required (positive)
-            // If no components selected (power = 0), show 0% efficiency (no shield = no efficiency)
-            stats.power === 0 ? 0 :
-            stats.power > 0 ? 0 :  // Positive power (required) = 0% efficiency
-            // Negative power means surplus - calculate efficiency based on surplus amount
+            // Power Efficiency: Based on shield components power consumption
+            // 100% efficiency = Compact Shield Generator only (10,000W)
+            // 0% efficiency = Advanced Shield + all extenders (169,000W)
             (() => {
-                const surplus = Math.abs(stats.power);
-                if (surplus <= 50000) return 100;
-                if (surplus >= 300000) return 0;
-                return Math.max(0, 100 - ((surplus - 50000) / 250000) * 100);
+                try {
+                    // Use the configuration from the optimization result
+                    if (!config || !config.generator || config.generator === 'none') {
+                        // If no optimization result yet or no shield, return 0
+                        return 0;
+                    }
+                    
+                    const shieldPower = this.calculateShieldPowerConsumption(config);
+                    
+                    // Define min and max power consumption for shield components only
+                    const minPower = 10000;  // Compact shield generator only
+                    const maxPower = 169000; // Advanced shield generator + all extenders maxed
+                    
+                    if (shieldPower === 0) return 0; // No shield components
+                    if (shieldPower <= minPower) return 100; // Most efficient
+                    if (shieldPower >= maxPower) return 0; // Least efficient
+                    
+                    // Calculate efficiency (inverted scale - lower power consumption = higher efficiency)
+                    const efficiency = 100 - ((shieldPower - minPower) / (maxPower - minPower)) * 100;
+                    return Math.max(0, Math.min(100, Math.round(efficiency)));
+                } catch (e) {
+                    console.error('Error calculating calculator power efficiency:', e);
+                    return 0;
+                }
             })()
         ];
         
@@ -1250,19 +1502,23 @@ class UIController {
         this.calculatorChart.update('none');
         
         // Update strategy display for calculator
-        this.updateCalculatorStrategyDisplay(normalizedData[0], normalizedData[1]);
+        this.updateCalculatorStrategyDisplay(stats);
     }
     
     // Update result display for calculator mode
-    updateCalculatorStrategyDisplay(capacityPercent, rechargePercent) {
+    updateCalculatorStrategyDisplay(stats) {
         let result = 'Balanced Capacity/Recharge';
         
-        const difference = capacityPercent - rechargePercent;
-        
-        if (difference > 15) {
-            result = 'High Capacity';
-        } else if (difference < -15) {
-            result = 'High Recharge';
+        if (stats.capacity > 0 && stats.recharge > 0) {
+            const rechargeTime = stats.capacity / stats.recharge;
+            
+            if (rechargeTime > 40) { // More than 35 + 5
+                result = 'High Capacity';
+            } else if (rechargeTime < 30) { // Less than 30
+                result = 'High Recharge';
+            } else {
+                result = 'Balanced Capacity/Recharge'; // 30-40 seconds (35 ± 5)
+            }
         }
         
         // Update or create result display
@@ -1302,12 +1558,13 @@ class UIController {
         // Reset constraints
         document.getElementById('cpu-limit').value = '';
         document.getElementById('power-limit').value = '';
+        document.getElementById('consider-power-usage').checked = false;
         document.getElementById('generator-constraint').value = 'any';
         document.getElementById('max-advanced-extenders').value = '4';
         document.getElementById('max-improved-extenders').value = '6';
         document.getElementById('max-basic-extenders').value = '8';
-        document.getElementById('max-small-reactors').value = '4';
-        document.getElementById('max-large-reactors').value = '2';
+        document.getElementById('max-small-reactors').value = '2';
+        document.getElementById('max-large-reactors').value = '1';
         
         // Reset crew
         document.getElementById('existing-shield-technicians').value = '0';
@@ -1316,8 +1573,29 @@ class UIController {
         document.getElementById('optimization-strategy').value = 'cpu-efficiency';
         this.updateStrategyHelp();
         
-        // Update block capacity display
-        this.updateBlockCapacity();
+        // Hide all result boxes and clear any previous results
+        this.hideAllResultBoxes();
+        
+        // Clear last optimization result
+        this.lastOptimizationResult = null;
+        
+        // Update target values state (enable/disable based on strategy)
+        this.updateTargetValuesState('cpu-efficiency');
+        
+        // Clear any error/success notifications
+        const notificationContainer = document.getElementById('notification-container');
+        if (notificationContainer) {
+            notificationContainer.innerHTML = '';
+        }
+        
+        // Reset loading state on calculate button if it exists
+        const calculateBtn = document.getElementById('calculate-btn');
+        if (calculateBtn) {
+            calculateBtn.classList.remove('is-loading');
+        }
+        
+        // Disable action buttons since we have no results
+        this.disableCalculatorActionButtons();
     }
     
     // Initialize input validation for numerical fields
@@ -1472,6 +1750,71 @@ class UIController {
         this.updateLiveStats();
     }
     
+    // Find Most Efficient - switch to calculator and optimize
+    findMostEfficient() {
+        // Get current explorer configuration and stats
+        const config = this.getCurrentConfiguration();
+        const stats = this.calculator.calculateStats(config);
+        
+        // Check if we have a valid shield configuration
+        if (!config.generator || config.generator === 'none' || stats.capacity <= 0 || stats.recharge <= 0) {
+            this.showError('Please configure a valid shield in the Explorer first.');
+            return;
+        }
+        
+        // Switch to calculator mode
+        this.switchToCalculatorMode();
+        
+        // Prepopulate target values with current stats
+        document.getElementById('target-capacity').value = Math.round(stats.capacity);
+        document.getElementById('target-recharge').value = Math.round(stats.recharge);
+        
+        // Set strategy to CPU-Efficiency
+        document.getElementById('optimization-strategy').value = 'cpu-efficiency';
+        this.updateStrategyHelp();
+        
+        // Copy blocks and crew from explorer to calculator
+        this.copyExplorerBlocksAndCrewToCalculator(config);
+        
+        // Show success message
+        this.showSuccess(`Transferred ${ComponentUtils.formatNumber(stats.capacity)} HP / ${ComponentUtils.formatNumber(stats.recharge)} HP/s to Calculator. Running optimization...`);
+        
+        // Run optimization after a short delay to show the message
+        setTimeout(() => {
+            this.calculateOptimal();
+        }, 500);
+    }
+    
+    // Switch from explorer to calculator mode
+    switchToCalculatorMode() {
+        // Switch active mode button
+        document.querySelectorAll('.mode-button').forEach(btn => btn.classList.remove('is-active'));
+        document.querySelector('.mode-button[data-mode="value-to-component"]').classList.add('is-active');
+        
+        // Switch mode content
+        document.querySelectorAll('.mode-content').forEach(content => content.classList.remove('is-active'));
+        document.getElementById('value-to-component-mode').classList.add('is-active');
+        
+        // Update tagline
+        document.getElementById('mode-tagline').textContent = 'Automatically find the optimal configuration for your requirements';
+    }
+    
+    // Copy blocks and crew from explorer to calculator
+    copyExplorerBlocksAndCrewToCalculator(config) {
+        // Copy blocks
+        if (config.blocks) {
+            document.getElementById('steel-blocks').value = config.blocks.steel || 0;
+            document.getElementById('hardened-steel-blocks').value = config.blocks.hardenedSteel || 0;
+            document.getElementById('combat-steel-blocks').value = config.blocks.combatSteel || 0;
+            document.getElementById('xeno-steel-blocks').value = config.blocks.xenoSteel || 0;
+        }
+        
+        // Copy crew
+        if (config.crew && config.crew.shieldTechnicians) {
+            document.getElementById('existing-shield-technicians').value = config.crew.shieldTechnicians;
+        }
+    }
+    
     // Populate Required Components box
     populateRequiredComponents(config, strategy, result = null) {
         const requiredComponentsContent = document.getElementById('required-components-content');
@@ -1549,6 +1892,7 @@ class UIController {
         // Get current constraint values
         const cpuLimit = document.getElementById('cpu-limit').value;
         const powerLimit = document.getElementById('power-limit').value;
+        const considerPowerUsage = document.getElementById('consider-power-usage').checked;
         const generatorConstraint = document.getElementById('generator-constraint').value;
         const maxAdvanced = document.getElementById('max-advanced-extenders').value;
         const maxImproved = document.getElementById('max-improved-extenders').value;
@@ -1614,10 +1958,79 @@ class UIController {
                         <span class="constraint-value">${maxLargeReactors}</span>
                     </td>
                 </tr>
+                <tr>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-label">Consider Power:</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;">
+                        <span class="constraint-value">${considerPowerUsage ? 'Yes' : 'No'}</span>
+                    </td>
+                    <td style="padding: 8px 12px; vertical-align: middle;" colspan="2">
+                        ${!considerPowerUsage ? '<em style="color: #3273dc;">Shield components only, no power optimization</em>' : ''}
+                    </td>
+                </tr>
             </table>
         `;
         
         appliedConstraintsContent.innerHTML = html;
+    }
+    
+    // Populate Included Bonuses box
+    populateIncludedBonuses(config) {
+        const includedBonusesContent = document.getElementById('included-bonuses-content');
+        if (!includedBonusesContent) return;
+        
+        let html = '';
+        let totalBonusCapacity = 0;
+        let totalBonusRecharge = 0;
+        
+        // Blocks
+        if (config.blocks) {
+            for (const blockType in config.blocks) {
+                const count = config.blocks[blockType];
+                if (count > 0) {
+                    const block = ComponentUtils.getComponent('blocks', blockType);
+                    if (block) {
+                        html += this.createComponentCard(block, count);
+                        totalBonusCapacity += block.capacity * count;
+                        totalBonusRecharge += (block.recharge || 0) * count;
+                    }
+                }
+            }
+        }
+        
+        // Crew
+        if (config.crew && config.crew.shieldTechnicians > 0) {
+            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician');
+            if (crew) {
+                html += this.createComponentCard(crew, config.crew.shieldTechnicians);
+                totalBonusCapacity += crew.capacity * config.crew.shieldTechnicians;
+                totalBonusRecharge += crew.recharge * config.crew.shieldTechnicians;
+            }
+        }
+        
+        // Show/hide the entire bonuses box based on content
+        const bonusesBox = document.getElementById('included-bonuses-box');
+        const bonusSummary = document.getElementById('calculator-bonus-summary');
+        const bonusCapacitySpan = document.getElementById('calculator-bonus-capacity');
+        const bonusRechargeSpan = document.getElementById('calculator-bonus-recharge');
+        
+        if (totalBonusCapacity > 0 || totalBonusRecharge > 0) {
+            // Show the bonuses box and populate content
+            if (bonusesBox) bonusesBox.classList.remove('is-hidden');
+            includedBonusesContent.innerHTML = html;
+            
+            // Update bonus summary box
+            if (bonusSummary && bonusCapacitySpan && bonusRechargeSpan) {
+                bonusCapacitySpan.textContent = ComponentUtils.formatNumber(totalBonusCapacity);
+                bonusRechargeSpan.textContent = ComponentUtils.formatNumber(totalBonusRecharge);
+                bonusSummary.style.display = 'block';
+            }
+        } else {
+            // Hide the entire bonuses box when empty
+            if (bonusesBox) bonusesBox.classList.add('is-hidden');
+            if (bonusSummary) bonusSummary.style.display = 'none';
+        }
     }
     
     // Export calculator configuration to self-contained HTML file
@@ -1661,12 +2074,32 @@ class UIController {
         // Build simple component table
         const componentsTable = this.buildSimpleComponentTable(config);
         
+        // Use current form values for bonuses, not optimizer config
+        const currentBlocks = {
+            steel: parseInt(document.getElementById('steel-blocks').value) || 0,
+            hardenedSteel: parseInt(document.getElementById('hardened-steel-blocks').value) || 0,
+            combatSteel: parseInt(document.getElementById('combat-steel-blocks').value) || 0,
+            xenoSteel: parseInt(document.getElementById('xeno-steel-blocks').value) || 0
+        };
+        const currentCrew = {
+            shieldTechnicians: parseInt(document.getElementById('existing-shield-technicians').value) || 0
+        };
+        const bonusConfig = {
+            blocks: currentBlocks,
+            crew: currentCrew
+        };
+        
+        // Check if there are bonuses to include
+        const hasBonuses = this.configHasBonuses(bonusConfig);
+        const bonusesTable = hasBonuses ? this.buildIncludedBonusesTable(bonusConfig) : null;
+        
         // Generate export data
         const exportData = {
             type: 'Calculator Results',
             generatedAt: new Date().toLocaleString(),
             stats: calculatorStats,
             components: componentsTable,
+            bonuses: bonusesTable,
             constraints: null // Remove constraints
         };
         
@@ -1691,6 +2124,10 @@ class UIController {
         
         // Build simple component table
         const componentsTable = this.buildSimpleComponentTable(config);
+        
+        // Use current form values for bonuses (already in config from getCurrentConfiguration)
+        const hasBonuses = this.configHasBonuses(config);
+        const bonusesTable = hasBonuses ? this.buildIncludedBonusesTable(config) : null;
         
         // Generate stats HTML
         const statsHTML = `
@@ -1720,6 +2157,7 @@ class UIController {
             generatedAt: new Date().toLocaleString(),
             stats: statsHTML,
             components: componentsTable,
+            bonuses: bonusesTable,
             constraints: null
         };
         
@@ -1736,11 +2174,21 @@ class UIController {
         
         const config = this.lastOptimizationResult.configuration;
         
-        // Populate explorer with the configuration
-        this.populateExplorerFromConfiguration(config);
+        // Set flag to prevent switchMode from updating live stats prematurely
+        this.isEditingInExplorer = true;
         
-        // Switch to explorer mode
+        // Switch to explorer mode first (this will initialize chart but not update stats)
         this.switchMode('component-to-value');
+        
+        // Wait for mode switch and chart initialization to complete
+        setTimeout(() => {
+            // Populate the configuration
+            this.populateExplorerFromConfiguration(config);
+            
+            // Clear the flag and update stats
+            this.isEditingInExplorer = false;
+            this.updateLiveStats();
+        }, 150);
         
         // Show success message
         this.showSuccess('Configuration loaded into Shield Explorer. You can now modify components.');
@@ -1805,9 +2253,13 @@ class UIController {
             if (technicianEl) technicianEl.value = config.crew.shieldTechnician || 0;
         }
         
-        // Update component box states and live stats
+        // Update component box states
         this.updateComponentBoxStates();
-        this.updateLiveStats();
+        
+        // Only update live stats if not in edit mode (will be handled by editInExplorer)
+        if (!this.isEditingInExplorer) {
+            this.updateLiveStats();
+        }
     }
     
     // Build simple component table for export
@@ -1852,25 +2304,6 @@ class UIController {
             }
         }
         
-        // Blocks
-        if (config.blocks) {
-            for (const [type, count] of Object.entries(config.blocks)) {
-                if (count > 0) {
-                    const block = ComponentUtils.getComponent('blocks', type);
-                    if (block) components.push({ name: block.name, quantity: count });
-                }
-            }
-        }
-        
-        // Crew
-        if (config.crew) {
-            for (const [type, count] of Object.entries(config.crew)) {
-                if (count > 0) {
-                    const crewMember = ComponentUtils.getComponent('crew', type);
-                    if (crewMember) components.push({ name: crewMember.name, quantity: count });
-                }
-            }
-        }
         
         // Build simple table HTML
         if (components.length === 0) {
@@ -1889,6 +2322,94 @@ class UIController {
         tableHTML += '</table>';
         
         return tableHTML;
+    }
+    
+    // Build included bonuses table with summary
+    buildIncludedBonusesTable(config) {
+        const bonuses = [];
+        let totalBonusCapacity = 0;
+        let totalBonusRecharge = 0;
+        
+        // Blocks
+        if (config.blocks) {
+            for (const [type, count] of Object.entries(config.blocks)) {
+                if (count > 0) {
+                    const block = ComponentUtils.getComponent('blocks', type);
+                    if (block) {
+                        bonuses.push({ name: block.name, quantity: count });
+                        totalBonusCapacity += block.capacity * count;
+                        totalBonusRecharge += (block.recharge || 0) * count;
+                    }
+                }
+            }
+        }
+        
+        // Crew
+        if (config.crew) {
+            for (const [type, count] of Object.entries(config.crew)) {
+                if (count > 0) {
+                    const crewMember = ComponentUtils.getComponent('crew', type);
+                    if (crewMember) {
+                        bonuses.push({ name: crewMember.name, quantity: count });
+                        totalBonusCapacity += crewMember.capacity * count;
+                        totalBonusRecharge += crewMember.recharge * count;
+                    }
+                }
+            }
+        }
+        
+        // If no bonuses, return message
+        if (bonuses.length === 0) {
+            return '<p>No bonus blocks or crew included</p>';
+        }
+        
+        // Build bonuses table HTML
+        let tableHTML = '<table style="width: 100%; border-collapse: collapse;">';
+        bonuses.forEach(bonus => {
+            tableHTML += `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${bonus.quantity}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${bonus.name}</td>
+                </tr>
+            `;
+        });
+        tableHTML += '</table>';
+        
+        // Add summary section
+        tableHTML += `
+            <div style="margin-top: 16px; padding: 12px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #00d1b2;">
+                <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px; font-weight: 600;">Total Bonus Stats</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div>
+                        <strong>Capacity:</strong> ${ComponentUtils.formatNumber(totalBonusCapacity)} HP
+                    </div>
+                    <div>
+                        <strong>Recharge:</strong> ${ComponentUtils.formatNumber(totalBonusRecharge)} HP/s
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return tableHTML;
+    }
+    
+    // Check if configuration has any bonuses (blocks or crew)
+    configHasBonuses(config) {
+        // Check blocks
+        if (config.blocks) {
+            for (const [type, count] of Object.entries(config.blocks)) {
+                if (count > 0) return true;
+            }
+        }
+        
+        // Check crew
+        if (config.crew) {
+            for (const [type, count] of Object.entries(config.crew)) {
+                if (count > 0) return true;
+            }
+        }
+        
+        return false;
     }
     
     // Generate and download HTML report
@@ -2064,6 +2585,13 @@ class UIController {
                 <h2>🔧 Required Components</h2>
                 ${data.components}
             </div>
+            
+            ${data.bonuses ? `
+            <div class="section">
+                <h2>⭐ Included Bonuses</h2>
+                ${data.bonuses}
+            </div>
+            ` : ''}
         </div>
         
         <div class="footer">
@@ -2072,6 +2600,145 @@ class UIController {
     </div>
 </body>
 </html>`;
+    }
+    
+    // Show help popover for the specified mode
+    showHelp(mode) {
+        const helpPopover = document.getElementById('help-popover');
+        const helpTitle = document.getElementById('help-popover-title');
+        const helpBody = document.getElementById('help-popover-body');
+        
+        if (!helpPopover || !helpTitle || !helpBody) return;
+        
+        // Set title and content based on mode
+        if (mode === 'calculator') {
+            helpTitle.textContent = 'Shield Calculator Help';
+            helpBody.innerHTML = this.getCalculatorHelpContent();
+        } else if (mode === 'explorer') {
+            helpTitle.textContent = 'Shield Explorer Help';
+            helpBody.innerHTML = this.getExplorerHelpContent();
+        }
+        
+        // Show the popover
+        helpPopover.classList.remove('is-hidden');
+        
+        // Prevent body scrolling when popover is open
+        document.body.style.overflow = 'hidden';
+    }
+    
+    // Hide help popover
+    hideHelp() {
+        const helpPopover = document.getElementById('help-popover');
+        if (helpPopover) {
+            helpPopover.classList.add('is-hidden');
+            
+            // Restore body scrolling
+            document.body.style.overflow = '';
+        }
+    }
+    
+    // Get help content for Calculator mode
+    getCalculatorHelpContent() {
+        return `
+            <h3>How to Use Shield Calculator</h3>
+            <p>The Shield Calculator finds the optimal shield configuration for your specific requirements.</p>
+            
+            <h3>Target Values</h3>
+            <ul>
+                <li><strong>Desired Capacity:</strong> Enter the shield HP you want (optional)</li>
+                <li><strong>Desired Recharge:</strong> Enter the recharge rate you want (optional)</li>
+                <li>For CPU-Efficiency strategy, at least one target value is required</li>
+            </ul>
+            
+            <h3>Optimization Strategies</h3>
+            <ul>
+                <li><strong>CPU-Efficiency:</strong> Meets your targets with least possible CPU usage</li>
+                <li><strong>Max Balanced:</strong> Highest capacity with balanced recharge rate</li>
+                <li><strong>Max Capacity:</strong> Absolute maximum shield capacity with positive recharge</li>
+                <li><strong>Max Recharge:</strong> Maximum capacity with ≤15 second full recharge time</li>
+            </ul>
+            
+            <h3>Constraints</h3>
+            <ul>
+                <li>Set <strong>CPU and Power limits</strong> based on your ship's current capabilities</li>
+                <li>Specify <strong>Shield Generator type</strong> if needed</li>
+                <li>Limit <strong>Extender quantities</strong> to match what will fit in your ship</li>
+                <li>Adjust <strong>Fusion Reactor limits</strong> to fit your preferences or your ship's available space</li>
+                <li><strong>Consider Power Usage:</strong> When checked, includes power generation components in optimization. When unchecked, optimizes shield components only without power calculations, only recommending fusion reactors if absolutely necessary</li>
+            </ul>
+            
+            <h3>Existing Components</h3>
+            <ul>
+                <li><strong>Shield Blocks:</strong> Add blocks you already have to include their shield capacity bonus in calculations</li>
+                <li><strong>Shield Technicians:</strong> Add these crew to include their bonuses in calculations</li>
+            </ul>
+            
+            <div class="help-tip">
+                <strong>Pro Tip:</strong> Start with CPU-Efficiency strategy and realistic targets. You can always edit the results in Shield Explorer for fine-tuning.
+            </div>
+        `;
+    }
+    
+    // Get help content for Explorer mode
+    getExplorerHelpContent() {
+        return `
+            <h3>How to Use Shield Explorer</h3>
+            <p>The Shield Explorer lets you experiment with components manually and see real-time performance feedback.</p>
+            
+            <h3>Getting Started</h3>
+            <ul>
+                <li><strong>Select a Shield Generator:</strong> This is required and enables all other selections</li>
+                <li>Choose from Compact, Standard, or Advanced Shield Generator</li>
+                <li>Higher tiers provide more capacity and recharge but cost more CPU and power</li>
+            </ul>
+            
+            <h3>Power Sources</h3>
+            <ul>
+                <li><strong>Fusion Reactors:</strong> Provide both power generation and recharge bonuses
+                    <ul>
+                        <li>Small Fusion Reactor: +250 HP/s recharge, 300kW power (max 4)</li>
+                        <li>Large Fusion Reactor: +1,000 HP/s recharge, 1MW power (max 2)</li>
+                    </ul>
+                </li>
+                <li><strong>Power Generators:</strong> Pure power generation with no recharge bonus, but require no rare materials
+                    <ul>
+                        <li>Improved Large Generator: 25kW power, 25k CPU</li>
+                        <li>Advanced Large Generator: 100kW power, 50k CPU</li>
+                    </ul>
+                </li>
+            </ul>
+            
+            <h3>Shield Extenders</h3>
+            <ul>
+                <li><strong>Capacitors:</strong> Increase shield capacity but decrease recharge rate</li>
+                <li><strong>Chargers:</strong> Increase shield recharge rate, but decrease capacity</li>
+                <li><strong>Tier Limits:</strong> Advanced (4), Improved (6), Basic (8)</li>
+                <li>Mix and match within tier limits to achieve desired balance</li>
+            </ul>
+            
+            <h3>Real-time Feedback</h3>
+            <ul>
+                <li><strong>Live Statistics:</strong> Watch stats update instantly as you make changes</li>
+                <li><strong>Visual Radar Chart:</strong> See balance between capacity, recharge, CPU efficiency, and power efficiency</li>
+                <li><strong>Warnings:</strong> Get alerts for invalid configurations or potential issues</li>
+                <li><strong>Component Inventory:</strong> See all selected components with their stats</li>
+            </ul>
+            
+            <h3>Blocks</h3>
+            <ul>
+                <li>Include total block counts (found on CPU Statistics page of ship menu)</li>
+                <li>These block types provide free shield capacity bonuses and may reduce the number of extenders needed</li>
+            </ul>
+            
+            <h3>Crew</h3>
+            <ul>
+                <li><strong>Shield Technicians:</strong> These give large bonuses and should be included if you have them</li>
+            </ul>
+            
+            <div class="help-tip">
+                <strong>Pro Tip:</strong> Use the radar chart to understand trade-offs. High capacity configs will have lower recharge efficiency, and vice versa.
+            </div>
+        `;
     }
     
 }

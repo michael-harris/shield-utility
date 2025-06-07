@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shield Configuration Calculator</title>
+    <title>RE2 CV Shield Utility</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -163,9 +163,6 @@
                                         <input class="input block-input" type="number" id="xeno-steel-blocks" min="0" value="0" data-capacity="7">
                                     </div>
                                 </div>
-                                <div class="notification is-info is-light">
-                                    <strong>Total Block Capacity:</strong> <span id="total-block-capacity">0</span> HP
-                                </div>
                             </div>
 
                             <!-- Crew -->
@@ -230,6 +227,15 @@
                                             <i class="fas fa-plug"></i>
                                         </span>
                                     </div>
+                                </div>
+                                <div class="field">
+                                    <div class="control">
+                                        <label class="checkbox">
+                                            <input type="checkbox" id="consider-power-usage">
+                                            Consider Power Usage
+                                        </label>
+                                    </div>
+                                    <p class="help">When checked, includes power generation components in optimization</p>
                                 </div>
                                 <div class="field">
                                     <label class="label">Shield Generator</label>
@@ -297,9 +303,9 @@
                                     <div class="control">
                                         <div class="select is-fullwidth">
                                             <select id="max-small-reactors">
-                                                <option value="4">4 (Default)</option>
+                                                <option value="4">4</option>
                                                 <option value="3">3</option>
-                                                <option value="2">2</option>
+                                                <option value="2" selected>2 (Default)</option>
                                                 <option value="1">1</option>
                                                 <option value="0">0</option>
                                             </select>
@@ -311,8 +317,8 @@
                                     <div class="control">
                                         <div class="select is-fullwidth">
                                             <select id="max-large-reactors">
-                                                <option value="2">2 (Default)</option>
-                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="1" selected>1 (Default)</option>
                                                 <option value="0">0</option>
                                             </select>
                                         </div>
@@ -341,6 +347,30 @@
 
                         <!-- Right Column - Results -->
                         <div class="column is-4">
+                            
+                            <!-- Export Actions -->
+                            <div id="calculator-export-actions" class="box">
+                                <div class="buttons is-centered">
+                                    <button id="help-calculator-btn" class="button is-light">
+                                        <span class="icon">
+                                            <i class="fas fa-question-circle"></i>
+                                        </span>
+                                        <span>Help</span>
+                                    </button>
+                                    <button id="export-calculator-btn" class="button is-primary" disabled>
+                                        <span class="icon">
+                                            <i class="fas fa-download"></i>
+                                        </span>
+                                        <span>Export</span>
+                                    </button>
+                                    <button id="edit-in-explorer-btn" class="button is-info" disabled>
+                                        <span class="icon">
+                                            <i class="fas fa-edit"></i>
+                                        </span>
+                                        <span>Edit In Explorer</span>
+                                    </button>
+                                </div>
+                            </div>
                             
                             <!-- Optimal Configuration Stats -->
                             <div id="calculator-stats-box" class="box is-hidden">
@@ -376,25 +406,7 @@
                                 
                                 <!-- Visual Chart -->
                                 <div class="mt-5">
-                                    <canvas id="calculatorStatsChart" width="400" height="300"></canvas>
-                                </div>
-                            </div>
-                            
-                            <!-- Export Actions -->
-                            <div id="calculator-export-actions" class="box is-hidden">
-                                <div class="buttons is-centered">
-                                    <button id="export-calculator-btn" class="button is-primary">
-                                        <span class="icon">
-                                            <i class="fas fa-download"></i>
-                                        </span>
-                                        <span>Export</span>
-                                    </button>
-                                    <button id="edit-in-explorer-btn" class="button is-info">
-                                        <span class="icon">
-                                            <i class="fas fa-edit"></i>
-                                        </span>
-                                        <span>Edit In Explorer</span>
-                                    </button>
+                                    <canvas id="calculatorStatsChart" width="500" height="400"></canvas>
                                 </div>
                             </div>
                             
@@ -405,6 +417,20 @@
                                 </h2>
                                 <div id="required-components-content">
                                     <!-- Required components will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <!-- Included Bonuses -->
+                            <div id="included-bonuses-box" class="box is-hidden">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-plus-circle"></i> Included Bonuses
+                                </h2>
+                                <div id="included-bonuses-content">
+                                    <!-- Included bonuses will be populated here -->
+                                </div>
+                                <div id="calculator-bonus-summary" class="notification is-success is-light" style="display: none;">
+                                    <strong>Total Bonus:</strong> 
+                                    +<span id="calculator-bonus-capacity">0</span> HP • +<span id="calculator-bonus-recharge">0</span> HP/s
                                 </div>
                             </div>
                             
@@ -757,6 +783,30 @@
 
                         <!-- Right Column - Live Stats -->
                         <div class="column is-4">
+                            <!-- Export Actions -->
+                            <div id="explorer-export-actions" class="box">
+                                <div class="buttons is-centered">
+                                    <button id="help-explorer-btn" class="button is-light">
+                                        <span class="icon">
+                                            <i class="fas fa-question-circle"></i>
+                                        </span>
+                                        <span>Help</span>
+                                    </button>
+                                    <button id="export-explorer-btn" class="button is-primary" disabled>
+                                        <span class="icon">
+                                            <i class="fas fa-download"></i>
+                                        </span>
+                                        <span>Export</span>
+                                    </button>
+                                    <button id="find-most-efficient-btn" class="button is-success" disabled>
+                                        <span class="icon">
+                                            <i class="fas fa-search-plus"></i>
+                                        </span>
+                                        <span>Check Efficiency</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
                             <div class="box" id="live-stats-box">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                                     <h2 class="title is-4" style="margin-bottom: 0;">
@@ -805,18 +855,6 @@
                                 </div>
                             </div>
                             
-                            <!-- Export Actions -->
-                            <div id="explorer-export-actions" class="box" style="display: none;">
-                                <div class="buttons is-centered">
-                                    <button id="export-explorer-btn" class="button is-primary">
-                                        <span class="icon">
-                                            <i class="fas fa-download"></i>
-                                        </span>
-                                        <span>Export</span>
-                                    </button>
-                                </div>
-                            </div>
-                            
                             <!-- Current Build Inventory -->
                             <div class="box" id="build-inventory">
                                 <h2 class="title is-4">
@@ -826,6 +864,22 @@
                                     <div class="notification is-info is-light">
                                         <p>Select components to see your build here</p>
                                     </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Included Bonuses -->
+                            <div class="box" id="explorer-included-bonuses-box">
+                                <h2 class="title is-4">
+                                    <i class="fas fa-plus-circle"></i> Included Bonuses
+                                </h2>
+                                <div id="explorer-included-bonuses-content">
+                                    <div class="notification is-info is-light">
+                                        <p>Enter blocks and crew to see bonuses here</p>
+                                    </div>
+                                </div>
+                                <div id="explorer-bonus-summary" class="notification is-success is-light" style="display: none;">
+                                    <strong>Total Bonus:</strong> 
+                                    +<span id="explorer-bonus-capacity">0</span> HP • +<span id="explorer-bonus-recharge">0</span> HP/s
                                 </div>
                             </div>
                         </div>
@@ -847,10 +901,23 @@
     <!-- Notification Container -->
     <div id="notification-container" class="notification-container"></div>
 
+    <!-- Help Popover -->
+    <div id="help-popover" class="help-popover is-hidden">
+        <div class="help-popover-content">
+            <div class="help-popover-header">
+                <h4 id="help-popover-title" class="help-popover-title">Help</h4>
+                <button id="help-popover-close" class="help-popover-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="help-popover-body" class="help-popover-body">
+                <!-- Help content will be populated here -->
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript Files -->
     <script src="js/data.js"></script>
-    <script src="js/fast-optimizer.js"></script>
-    <script src="js/optimization-cache.js"></script>
     <script src="js/precalculation-engine.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/optimizer.js"></script>
