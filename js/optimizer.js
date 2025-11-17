@@ -4,13 +4,20 @@ class ShieldOptimizer {
         this.calculator = calculator;
         this.tolerance = 0.05;
         this.preCalculationEngine = null;
-        this.initializePreCalculation();
+        this.currentShipType = 'CV'; // Default to CV for backward compatibility
+        this.initializePreCalculation('CV');
     }
-    
-    async initializePreCalculation() {
+
+    // Set ship type and reinitialize pre-calculation engine
+    async setShipType(shipType) {
+        this.currentShipType = shipType;
+        await this.initializePreCalculation(shipType);
+    }
+
+    async initializePreCalculation(shipType = 'CV') {
         try {
             if (typeof PreCalculationEngine !== 'undefined') {
-                this.preCalculationEngine = new PreCalculationEngine(this.calculator);
+                this.preCalculationEngine = new PreCalculationEngine(this.calculator, shipType);
                 await this.preCalculationEngine.generateCoreConfigurations();
                 this.preCalculationEngine.isReady = true;
             }
@@ -18,10 +25,20 @@ class ShieldOptimizer {
             this.preCalculationEngine = null;
         }
     }
-    
-    async optimize(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}, strategy = 'cpu-efficiency') {
-        // Store strategy in constraints for use in sub-methods
+
+    async optimize(targetCapacity, targetRecharge, constraints = {}, existingBlocks = {}, existingCrew = {}, strategy = 'cpu-efficiency', shipType = null) {
+        // Use provided ship type or fall back to current
+        const activeShipType = shipType || this.currentShipType;
+
+        // Apply ship-specific default constraints
+        if (typeof ShipTypeUtils !== 'undefined') {
+            const defaultConstraints = ShipTypeUtils.getDefaultConstraints(activeShipType);
+            constraints = { ...defaultConstraints, ...constraints }; // User constraints override defaults
+        }
+
+        // Store strategy and ship type in constraints for use in sub-methods
         constraints.strategy = strategy;
+        constraints.shipType = activeShipType;
         
         let result;
         switch (strategy) {

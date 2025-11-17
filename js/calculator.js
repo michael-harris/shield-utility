@@ -2,20 +2,42 @@
 class ShieldUtility {
     constructor() {
         this.components = components;
+        this.currentShipType = 'CV'; // Default to CV for backward compatibility
     }
-    
+
+    // Set the active ship type
+    setShipType(shipType) {
+        this.currentShipType = shipType;
+        // Update components reference to ship-specific components
+        if (typeof ShipTypeUtils !== 'undefined') {
+            this.components = ShipTypeUtils.getComponents(shipType);
+        }
+    }
+
+    // Get ship-specific components
+    getShipComponents(shipType = null) {
+        const activeShipType = shipType || this.currentShipType;
+        if (typeof ShipTypeUtils !== 'undefined') {
+            return ShipTypeUtils.getComponents(activeShipType);
+        }
+        return components; // Fallback to legacy CV components
+    }
+
     // Calculate total stats for a given configuration
-    calculateStats(configuration) {
+    calculateStats(configuration, shipType = null) {
+        const activeShipType = shipType || this.currentShipType;
+        const shipComponents = this.getShipComponents(activeShipType);
+
         let stats = {
             capacity: 0,
             recharge: 0,
             cpu: 0,
             power: 0
         };
-        
+
         // Add generator stats
         if (configuration.generator && configuration.generator !== 'none') {
-            const gen = this.components.generators[configuration.generator];
+            const gen = shipComponents.generators[configuration.generator];
             if (gen) {
                 stats.capacity += gen.capacity;
                 stats.recharge += gen.recharge;
@@ -28,8 +50,8 @@ class ShieldUtility {
         if (configuration.powerGenerators) {
             for (const genType in configuration.powerGenerators) {
                 const count = configuration.powerGenerators[genType];
-                if (count > 0 && this.components.powerGenerators[genType]) {
-                    const gen = this.components.powerGenerators[genType];
+                if (count > 0 && shipComponents.powerGenerators && shipComponents.powerGenerators[genType]) {
+                    const gen = shipComponents.powerGenerators[genType];
                     stats.capacity += gen.capacity * count;
                     stats.recharge += gen.recharge * count;
                     stats.cpu += gen.cpu * count;
@@ -37,22 +59,22 @@ class ShieldUtility {
                 }
             }
         }
-        
-        // Add reactor stats
-        if (configuration.reactors) {
+
+        // Add reactor stats (only if ship has reactors, e.g., CV)
+        if (configuration.reactors && shipComponents.reactors) {
             // Small reactors
-            if (configuration.reactors.small > 0) {
-                const reactor = this.components.reactors.small;
+            if (configuration.reactors.small > 0 && shipComponents.reactors.small) {
+                const reactor = shipComponents.reactors.small;
                 const count = Math.min(configuration.reactors.small, reactor.limit);
                 stats.capacity += reactor.capacity * count;
                 stats.recharge += reactor.recharge * count;
                 stats.cpu += reactor.cpu * count;
                 stats.power += reactor.power * count; // Negative value (power generation)
             }
-            
+
             // Large reactors
-            if (configuration.reactors.large > 0) {
-                const reactor = this.components.reactors.large;
+            if (configuration.reactors.large > 0 && shipComponents.reactors.large) {
+                const reactor = shipComponents.reactors.large;
                 const count = Math.min(configuration.reactors.large, reactor.limit);
                 stats.capacity += reactor.capacity * count;
                 stats.recharge += reactor.recharge * count;
@@ -60,24 +82,24 @@ class ShieldUtility {
                 stats.power += reactor.power * count; // Negative value (power generation)
             }
         }
-        
+
         // Add extender stats
         if (configuration.extenders) {
             for (const tier in configuration.extenders) {
-                if (this.components.extenders[tier]) {
+                if (shipComponents.extenders[tier]) {
                     // Capacitors
                     if (configuration.extenders[tier].capacitor > 0) {
-                        const extender = this.components.extenders[tier].capacitor;
+                        const extender = shipComponents.extenders[tier].capacitor;
                         const count = configuration.extenders[tier].capacitor;
                         stats.capacity += extender.capacity * count;
                         stats.recharge += extender.recharge * count;
                         stats.cpu += extender.cpu * count;
                         stats.power += extender.power * count;
                     }
-                    
+
                     // Chargers
                     if (configuration.extenders[tier].charger > 0) {
-                        const extender = this.components.extenders[tier].charger;
+                        const extender = shipComponents.extenders[tier].charger;
                         const count = configuration.extenders[tier].charger;
                         stats.capacity += extender.capacity * count;
                         stats.recharge += extender.recharge * count;
@@ -130,8 +152,10 @@ class ShieldUtility {
     }
     
     // Validate configuration constraints
-    validateConfiguration(configuration, constraints = {}) {
-        const stats = this.calculateStats(configuration);
+    validateConfiguration(configuration, constraints = {}, shipType = null) {
+        const activeShipType = shipType || this.currentShipType;
+        const shipComponents = this.getShipComponents(activeShipType);
+        const stats = this.calculateStats(configuration, activeShipType);
         const warnings = [];
         
         // Check CPU limit
@@ -168,15 +192,15 @@ class ShieldUtility {
         // Only warn about power if there aren't sufficient power generators
         if (stats.power > 0) {
             let totalPowerGeneration = 0;
-            if (configuration.powerGenerators) {
+            if (configuration.powerGenerators && shipComponents.powerGenerators) {
                 for (const genType in configuration.powerGenerators) {
                     const count = configuration.powerGenerators[genType];
-                    if (count > 0 && this.components.powerGenerators[genType]) {
-                        totalPowerGeneration += Math.abs(this.components.powerGenerators[genType].power) * count;
+                    if (count > 0 && shipComponents.powerGenerators[genType]) {
+                        totalPowerGeneration += Math.abs(shipComponents.powerGenerators[genType].power) * count;
                     }
                 }
             }
-            
+
             // Only add warning if power generators don't cover the requirement
             if (totalPowerGeneration < stats.power) {
                 const remainingPower = stats.power - totalPowerGeneration;
@@ -186,9 +210,9 @@ class ShieldUtility {
                 });
             }
         }
-        
+
         // Check power generator limits
-        if (configuration.powerGenerators) {
+        if (configuration.powerGenerators && shipComponents.powerGenerators) {
             const maxPowerGenerators = 4; // Enforce 4 generator limit as shown in UI
             for (const genType in configuration.powerGenerators) {
                 const count = configuration.powerGenerators[genType];
@@ -200,34 +224,38 @@ class ShieldUtility {
                 }
             }
         }
-        
-        // Check reactor limits
-        if (configuration.reactors) {
-            if (configuration.reactors.small > this.components.reactors.small.limit) {
-                warnings.push({
-                    type: 'reactor',
-                    message: `Small fusion reactors (${configuration.reactors.small}) exceed limit (${this.components.reactors.small.limit})`
-                });
+
+        // Check reactor limits (only if ship has reactors)
+        if (configuration.reactors && shipComponents.reactors) {
+            if (configuration.reactors.small > 0 && shipComponents.reactors.small) {
+                if (configuration.reactors.small > shipComponents.reactors.small.limit) {
+                    warnings.push({
+                        type: 'reactor',
+                        message: `Small fusion reactors (${configuration.reactors.small}) exceed ${activeShipType} limit (${shipComponents.reactors.small.limit})`
+                    });
+                }
             }
-            if (configuration.reactors.large > this.components.reactors.large.limit) {
-                warnings.push({
-                    type: 'reactor',
-                    message: `Large fusion reactors (${configuration.reactors.large}) exceed limit (${this.components.reactors.large.limit})`
-                });
+            if (configuration.reactors.large > 0 && shipComponents.reactors.large) {
+                if (configuration.reactors.large > shipComponents.reactors.large.limit) {
+                    warnings.push({
+                        type: 'reactor',
+                        message: `Large fusion reactors (${configuration.reactors.large}) exceed ${activeShipType} limit (${shipComponents.reactors.large.limit})`
+                    });
+                }
             }
         }
         
-        // Check extender limits
+        // Check extender limits (use ship-specific tier limits)
         if (configuration.extenders) {
             for (const tier in configuration.extenders) {
-                const tierLimit = this.components.tierLimits[tier];
-                const tierTotal = (configuration.extenders[tier].capacitor || 0) + 
+                const tierLimit = ComponentUtils.getTierLimit(tier, activeShipType);
+                const tierTotal = (configuration.extenders[tier].capacitor || 0) +
                                 (configuration.extenders[tier].charger || 0);
-                
+
                 if (tierTotal > tierLimit) {
                     warnings.push({
                         type: 'extender',
-                        message: `${tier} extenders (${tierTotal}) exceed tier limit (${tierLimit})`
+                        message: `${tier} extenders (${tierTotal}) exceed ${activeShipType} tier limit (${tierLimit})`
                     });
                 }
             }

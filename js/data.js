@@ -1,33 +1,35 @@
-// Component Database
+// Component Database - CV (default for backward compatibility)
+// Note: Ship-specific components are now in ship-types.js
 const components = {
     blocks: {
-        steel: { 
-            name: "Steel Block", 
-            capacity: 1, 
-            power: 0, 
+        steel: {
+            name: "Steel Block",
+            capacity: 1,
+            power: 0,
             cpu: 0,
             image: "images/steel-block.png"
         },
-        hardenedSteel: { 
-            name: "Hardened Steel Block", 
-            capacity: 2, 
-            power: 0, 
+        hardenedSteel: {
+            name: "Hardened Steel Block",
+            capacity: 2,
+            power: 0,
             cpu: 0,
             image: "images/hardened-steel-block.png"
         },
-        combatSteel: { 
-            name: "Combat Steel Block", 
-            capacity: 4, 
-            power: 0, 
+        combatSteel: {
+            name: "Combat Steel Block",
+            capacity: 4,
+            power: 0,
             cpu: 0,
             image: "images/combat-steel-block.png"
         },
-        xenoSteel: { 
-            name: "XenoSteel Block", 
-            capacity: 7, 
-            power: 0, 
+        xenoSteel: {
+            name: "XenoSteel Block",
+            capacity: 7,
+            power: 0,
             cpu: 0,
-            image: "images/xenosteel-block.png"
+            image: "images/xenosteel-block.png",
+            shipTypes: ['CV']  // Only available for CV
         }
     },
     
@@ -239,22 +241,31 @@ const components = {
 
 // Utility functions for component data
 const ComponentUtils = {
-    // Get component by type and id
-    getComponent(type, id) {
+    // Get component by type and id (backward compatible, defaults to CV)
+    getComponent(type, id, shipType = 'CV') {
+        // Try ship-specific components first if ship-types.js is loaded
+        if (typeof ShipTypeUtils !== 'undefined') {
+            const shipComponents = ShipTypeUtils.getComponents(shipType);
+            if (shipComponents[type] && shipComponents[type][id]) {
+                return shipComponents[type][id];
+            }
+        }
+
+        // Fallback to legacy components object (CV)
         return components[type] && components[type][id] ? components[type][id] : null;
     },
-    
+
     // Calculate efficiency score for sorting
     getEfficiencyScore(component, prioritizeCapacity = true) {
         if (!component.efficiency) return 0;
-        
+
         if (prioritizeCapacity) {
             return Math.abs(component.efficiency.capacity);
         } else {
             return component.efficiency.recharge;
         }
     },
-    
+
     // Format power values for display
     formatPower(power) {
         if (Math.abs(power) >= 1000000) {
@@ -265,14 +276,53 @@ const ComponentUtils = {
             return power + ' W';
         }
     },
-    
+
     // Format numbers with commas
     formatNumber(num) {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     },
-    
-    // Get tier limit for extenders
-    getTierLimit(tier) {
+
+    // Get tier limit for extenders (ship-type aware)
+    getTierLimit(tier, shipType = 'CV') {
+        // Try ship-specific limits first if ship-types.js is loaded
+        if (typeof ShipTypeUtils !== 'undefined') {
+            return ShipTypeUtils.getTierLimit(tier, shipType);
+        }
+
+        // Fallback to legacy components object
         return components.tierLimits[tier] || 0;
+    },
+
+    // Get reactor limit for ship type
+    getReactorLimit(reactorSize, shipType = 'CV') {
+        if (typeof ShipTypeUtils !== 'undefined') {
+            return ShipTypeUtils.getReactorLimit(reactorSize, shipType);
+        }
+
+        // Fallback to CV defaults
+        const reactorDefaults = { small: 4, large: 2 };
+        return reactorDefaults[reactorSize] || 0;
+    },
+
+    // Check if component is available for ship type
+    isAvailableForShip(componentType, shipType = 'CV') {
+        if (typeof ShipTypeUtils !== 'undefined') {
+            return ShipTypeUtils.hasComponent(shipType, componentType);
+        }
+
+        // Fallback to CV (everything available)
+        return shipType === 'CV';
+    },
+
+    // Get available blocks for ship type
+    getAvailableBlocks(shipType = 'CV') {
+        const blocks = { ...components.blocks };
+
+        // Remove XenoSteel for SV
+        if (shipType === 'SV' && blocks.xenoSteel) {
+            delete blocks.xenoSteel;
+        }
+
+        return blocks;
     }
 };

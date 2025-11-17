@@ -2,43 +2,63 @@
 // This system pre-calculates core component combinations to dramatically improve optimization speed
 
 class PreCalculationEngine {
-    constructor(calculator) {
+    constructor(calculator, shipType = 'CV') {
         this.calculator = calculator;
+        this.shipType = shipType;
         this.coreConfigurations = [];
         this.lookupTable = new Map();
         this.isReady = false;
     }
-    
-    // Calculate all core configurations (generator + reactors for recharge only)
+
+    // Calculate all core configurations (generator + reactors/fusion generators for recharge)
     // Power generators will be calculated separately based on actual power needs
     // Extenders will be calculated on-demand for better performance
     async generateCoreConfigurations() {
         const start = performance.now();
-        
-        const generators = ['compact', 'standard', 'advanced'];
-        const maxSmallReactors = 4;
-        const maxLargeReactors = 2;
+
+        // Get ship-specific components and limits
+        const shipComponents = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getComponents(this.shipType)
+            : { generators: { compact: {}, standard: {}, advanced: {} } };
+
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(this.shipType)
+            : { reactors: { small: 4, large: 2 } };
+
+        // Get available generators for this ship type
+        const generators = Object.keys(shipComponents.generators);
+        const maxSmallReactors = shipLimits.reactors.small || 0;
+        const maxLargeReactors = shipLimits.reactors.large || 0;
         
         const configurations = [];
         let configId = 0;
         
+        // Initialize power generators object based on ship type
+        const powerGeneratorsInit = {};
+        if (shipComponents.powerGenerators) {
+            for (const genType in shipComponents.powerGenerators) {
+                powerGeneratorsInit[genType] = 0;
+            }
+        }
+
         for (const generator of generators) {
             // Try all fusion reactor combinations (for recharge only)
+            // For SV with no reactors, this will run once with 0,0
             for (let smallReactors = 0; smallReactors <= maxSmallReactors; smallReactors++) {
                 for (let largeReactors = 0; largeReactors <= maxLargeReactors; largeReactors++) {
-                    
+
                     // Shield-only configuration (no power generators - they'll be added later based on need)
                     const config = {
                         id: configId++,
                         generator: generator,
                         reactors: { small: smallReactors, large: largeReactors },
-                        powerGenerators: { advancedLarge: 0, improvedLarge: 0 },
+                        powerGenerators: { ...powerGeneratorsInit },
                         extenders: { advanced: { capacitor: 0, charger: 0 }, improved: { capacitor: 0, charger: 0 }, basic: { capacitor: 0, charger: 0 } },
                         blocks: {},
                         crew: {}
                     };
-                    
-                    const stats = this.calculator.calculateStats(config);
+
+                    const stats = this.calculator.calculateStats(config, this.shipType);
                     configurations.push({
                         id: config.id,
                         config: config,

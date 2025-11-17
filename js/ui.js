@@ -4,10 +4,11 @@ class UIController {
         this.calculator = calculator;
         this.optimizer = optimizer;
         this.currentMode = 'value-to-component';
+        this.currentShipType = 'CV'; // Default to CV for backward compatibility
         this.chart = null;
         this.calculatorChart = null; // Chart for calculator results
         this.lastOptimizationResult = null; // Store last optimization result for export/edit
-        
+
         this.initializeEventListeners();
         this.initializeExtenderDropdowns();
         this.updateComponentBoxStates();
@@ -19,6 +20,14 @@ class UIController {
     
     // Initialize all event listeners
     initializeEventListeners() {
+        // Ship type selection
+        const shipTypeSelector = document.getElementById('ship-type-selector');
+        if (shipTypeSelector) {
+            shipTypeSelector.addEventListener('change', (e) => {
+                this.onShipTypeChanged(e.target.value);
+            });
+        }
+
         // Mode switching
         document.querySelectorAll('.mode-button').forEach(button => {
             button.addEventListener('click', (e) => {
@@ -27,7 +36,7 @@ class UIController {
                 this.switchMode(mode);
             });
         });
-        
+
         // Calculate button
         const calculateBtn = document.getElementById('calculate-btn');
         if (calculateBtn) {
@@ -137,20 +146,20 @@ class UIController {
     // Switch between calculation modes
     switchMode(mode) {
         this.currentMode = mode;
-        
+
         // Update button appearance
         document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('is-active'));
         document.querySelector(`[data-mode="${mode}"]`).classList.add('is-active');
-        
+
         // Switch content
         document.querySelectorAll('.mode-content').forEach(content => {
             content.classList.remove('is-active');
         });
         document.getElementById(`${mode}-mode`).classList.add('is-active');
-        
+
         // Update tagline
         this.updateModeTagline(mode);
-        
+
         // Initialize chart for component-to-value mode
         if (mode === 'component-to-value') {
             setTimeout(() => {
@@ -162,7 +171,90 @@ class UIController {
             }, 100);
         }
     }
-    
+
+    // Handle ship type changes
+    async onShipTypeChanged(shipType) {
+        this.currentShipType = shipType;
+
+        // Update calculator and optimizer ship types
+        this.calculator.setShipType(shipType);
+        await this.optimizer.setShipType(shipType);
+
+        // Update page title
+        const titleElement = document.getElementById('utility-title');
+        if (titleElement && typeof ShipTypeUtils !== 'undefined') {
+            const shipConfig = ShipTypeUtils.getShipType(shipType);
+            titleElement.textContent = `${shipConfig.abbreviation} Shield Utility`;
+        }
+
+        // Re-initialize extender dropdowns with ship-specific limits
+        this.initializeExtenderDropdowns();
+
+        // Clear any previous results
+        this.clearCalculatorResults();
+
+        // Update live stats in explorer mode
+        if (this.currentMode === 'component-to-value') {
+            this.updateLiveStats();
+        }
+
+        // Update UI elements that depend on ship type
+        this.updateShipTypeUI(shipType);
+    }
+
+    // Update UI elements based on ship type
+    updateShipTypeUI(shipType) {
+        // Hide/show XenoSteel blocks based on ship type
+        const xenoSteelRow = document.querySelector('[data-block-type="xenoSteel"]');
+        if (xenoSteelRow) {
+            if (shipType === 'SV') {
+                xenoSteelRow.style.display = 'none';
+                const input = xenoSteelRow.querySelector('input');
+                if (input) input.value = 0;
+            } else {
+                xenoSteelRow.style.display = '';
+            }
+        }
+
+        // Hide/show Shield Technicians based on ship type
+        const technicianRow = document.querySelector('[data-crew-type="technician"]');
+        if (technicianRow) {
+            if (shipType === 'SV') {
+                technicianRow.style.display = 'none';
+                const input = technicianRow.querySelector('input');
+                if (input) input.value = 0;
+            } else {
+                technicianRow.style.display = '';
+            }
+        }
+
+        // Update constraint placeholders/limits based on ship type
+        if (typeof ShipTypeUtils !== 'undefined') {
+            const defaults = ShipTypeUtils.getDefaultConstraints(shipType);
+
+            const maxSmallReactors = document.getElementById('max-small-reactors');
+            if (maxSmallReactors) {
+                maxSmallReactors.placeholder = defaults.maxSmallReactors || 0;
+                maxSmallReactors.max = ComponentUtils.getReactorLimit('small', shipType);
+            }
+
+            const maxLargeReactors = document.getElementById('max-large-reactors');
+            if (maxLargeReactors) {
+                maxLargeReactors.placeholder = defaults.maxLargeReactors || 0;
+                maxLargeReactors.max = ComponentUtils.getReactorLimit('large', shipType);
+            }
+        }
+    }
+
+    // Clear calculator results
+    clearCalculatorResults() {
+        const resultsSection = document.getElementById('calculator-results');
+        if (resultsSection) {
+            resultsSection.style.display = 'none';
+        }
+        this.lastOptimizationResult = null;
+    }
+
     // Update the tagline based on current mode
     updateModeTagline(mode) {
         const taglineElement = document.getElementById('mode-tagline');
@@ -176,21 +268,21 @@ class UIController {
         taglineElement.textContent = taglines[mode] || taglines['value-to-component'];
     }
     
-    // Initialize extender dropdown options
+    // Initialize extender dropdown options (ship-type aware)
     initializeExtenderDropdowns() {
         const tiers = ['advanced', 'improved', 'basic'];
         const types = ['capacitor', 'charger'];
-        
+
         tiers.forEach(tier => {
             types.forEach(type => {
                 const selectId = `${tier}-${type}s`;
                 const select = document.getElementById(selectId);
                 if (select) {
-                    const limit = ComponentUtils.getTierLimit(tier);
-                    
+                    const limit = ComponentUtils.getTierLimit(tier, this.currentShipType);
+
                     // Clear existing options
                     select.innerHTML = '';
-                    
+
                     // Add options from 0 to tier limit
                     for (let i = 0; i <= limit; i++) {
                         const option = document.createElement('option');
@@ -206,11 +298,11 @@ class UIController {
     // Update extender dropdown limits based on current selections
     updateExtenderLimits() {
         const tiers = ['advanced', 'improved', 'basic'];
-        
+
         tiers.forEach(tier => {
             const capacitorSelect = document.getElementById(`${tier}-capacitors`);
             const chargerSelect = document.getElementById(`${tier}-chargers`);
-            const limit = ComponentUtils.getTierLimit(tier);
+            const limit = ComponentUtils.getTierLimit(tier, this.currentShipType);
             
             if (capacitorSelect && chargerSelect) {
                 const capacitorCount = parseInt(capacitorSelect.value) || 0;
@@ -633,7 +725,7 @@ class UIController {
                 const adjustedTargetCapacity = targetCapacity ? Math.max(1, targetCapacity - bonusStats.capacity) : null;
                 const adjustedTargetRecharge = targetRecharge ? Math.max(1, targetRecharge - bonusStats.recharge) : null;
                 // Optimize for adjusted targets without blocks/crew, then add bonuses back
-                result = await this.optimizer.optimize(adjustedTargetCapacity, adjustedTargetRecharge, constraints, {}, {}, strategy);
+                result = await this.optimizer.optimize(adjustedTargetCapacity, adjustedTargetRecharge, constraints, {}, {}, strategy, this.currentShipType);
                 if (result.success) {
                     result.stats.capacity += bonusStats.capacity;
                     result.stats.recharge += bonusStats.recharge;
@@ -651,7 +743,7 @@ class UIController {
                 }
             } else {
                 // No targets specified: optimize without blocks/crew, then add bonus stats to result
-                result = await this.optimizer.optimize(null, null, constraints, {}, {}, strategy);
+                result = await this.optimizer.optimize(null, null, constraints, {}, {}, strategy, this.currentShipType);
                 if (result.success) {
                     result.stats.capacity += bonusStats.capacity;
                     result.stats.recharge += bonusStats.recharge;
