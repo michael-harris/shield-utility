@@ -138,14 +138,23 @@ class PreCalculationEngine {
     // Get filtered core configurations based on constraints
     getFilteredCoreConfigs(constraints) {
         let candidates = [];
-        
+
+        // Get ship-specific defaults
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(this.shipType)
+            : { reactors: { small: 4, large: 2 }, extenders: { advanced: 4, improved: 6, basic: 8 } };
+
+        const availableGenerators = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getAvailableGenerators(this.shipType)
+            : ['compact', 'standard', 'advanced'];
+
         // Determine which generator types to consider
-        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : ['compact', 'standard', 'advanced'];
-        
+        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : availableGenerators;
+
         for (const generator of generatorTypes) {
             // Add fusion configs if reactors are allowed
-            const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 4;
-            const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 2;
+            const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : (shipLimits.reactors.small || 0);
+            const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : (shipLimits.reactors.large || 0);
             
             if (maxSmallReactors > 0 || maxLargeReactors > 0) {
                 const fusionKey = `${generator}-fusion`;
@@ -177,9 +186,14 @@ class PreCalculationEngine {
     
     // Optimize extenders for a given core configuration
     optimizeExtendersForCore(coreConfig, strategy, constraints, targetCapacity, targetRecharge, existingBlocks, existingCrew) {
-        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : 4;
-        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : 6;
-        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : 8;
+        // Get ship-specific extender limits
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(this.shipType)
+            : { extenders: { advanced: 4, improved: 6, basic: 8 } };
+
+        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : (shipLimits.extenders.advanced || 4);
+        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : (shipLimits.extenders.improved || 6);
+        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : (shipLimits.extenders.basic || 8);
         
         let bestConfig = null;
         let bestScore = -1;
@@ -228,15 +242,33 @@ class PreCalculationEngine {
     // Generate smart extender combinations based on targets
     generateExtenderCombos(maxAdvanced, maxImproved, maxBasic, baseStats, targetCapacity, targetRecharge) {
         const combinations = [];
-        
+
+        // Get ship-specific component stats
+        const shipComponents = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getComponents(this.shipType)
+            : null;
+
+        // Extract extender stats (capacity and recharge values)
+        let advCapCapacity = 32000, impCapCapacity = 16000, basCapCapacity = 8000;
+        let advChgRecharge = 1200, impChgRecharge = 600, basChgRecharge = 300;
+
+        if (shipComponents && shipComponents.extenders) {
+            advCapCapacity = Math.abs(shipComponents.extenders.advanced?.capacitor?.capacity || 32000);
+            impCapCapacity = Math.abs(shipComponents.extenders.improved?.capacitor?.capacity || 16000);
+            basCapCapacity = Math.abs(shipComponents.extenders.basic?.capacitor?.capacity || 8000);
+            advChgRecharge = Math.abs(shipComponents.extenders.advanced?.charger?.recharge || 1200);
+            impChgRecharge = Math.abs(shipComponents.extenders.improved?.charger?.recharge || 600);
+            basChgRecharge = Math.abs(shipComponents.extenders.basic?.charger?.recharge || 300);
+        }
+
         // Calculate needed capacity and recharge
         const neededCapacity = targetCapacity ? Math.max(0, targetCapacity - baseStats.capacity) : 0;
         const neededRecharge = targetRecharge ? Math.max(0, targetRecharge - baseStats.recharge) : 0;
-        
+
         // Strategy 1: Capacity-focused (all capacitors)
         for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
             for (let impCap = 0; impCap <= maxImproved; impCap++) {
-                const remainingBasic = Math.min(maxBasic, Math.max(0, (neededCapacity - advCap * 32000 - impCap * 16000) / 8000));
+                const remainingBasic = Math.min(maxBasic, Math.max(0, (neededCapacity - advCap * advCapCapacity - impCap * impCapCapacity) / basCapCapacity));
                 for (let basCap = 0; basCap <= Math.min(maxBasic, remainingBasic + 2); basCap++) {
                     combinations.push({
                         advanced: { capacitor: advCap, charger: Math.min(maxAdvanced - advCap, 1) },
@@ -246,11 +278,11 @@ class PreCalculationEngine {
                 }
             }
         }
-        
+
         // Strategy 2: Recharge-focused (all chargers)
         for (let advChg = 0; advChg <= maxAdvanced; advChg++) {
             for (let impChg = 0; impChg <= maxImproved; impChg++) {
-                const remainingBasic = Math.min(maxBasic, Math.max(0, (neededRecharge - advChg * 1200 - impChg * 600) / 300));
+                const remainingBasic = Math.min(maxBasic, Math.max(0, (neededRecharge - advChg * advChgRecharge - impChg * impChgRecharge) / basChgRecharge));
                 for (let basChg = 0; basChg <= Math.min(maxBasic, remainingBasic + 2); basChg++) {
                     combinations.push({
                         advanced: { capacitor: Math.min(maxAdvanced - advChg, 1), charger: advChg },

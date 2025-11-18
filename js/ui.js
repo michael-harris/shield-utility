@@ -866,10 +866,20 @@ class UIController {
                 maxAdvancedExtenders: parseInt(document.getElementById('max-advanced-extenders').value),
                 maxImprovedExtenders: parseInt(document.getElementById('max-improved-extenders').value),
                 maxBasicExtenders: parseInt(document.getElementById('max-basic-extenders').value),
-                maxSmallReactors: parseInt(document.getElementById('max-small-reactors').value),
-                maxLargeReactors: parseInt(document.getElementById('max-large-reactors').value),
                 considerPowerUsage: considerPowerUsage
             };
+
+            // Add ship-specific constraints
+            if (this.currentShipType === 'SV') {
+                // SV uses fusion generators instead of reactors
+                constraints.maxSmallReactors = 0;
+                constraints.maxLargeReactors = 0;
+                constraints.maxFusionGenerators = parseInt(document.getElementById('max-fusion-generators')?.value) || 1;
+            } else {
+                // CV uses fusion reactors
+                constraints.maxSmallReactors = parseInt(document.getElementById('max-small-reactors').value);
+                constraints.maxLargeReactors = parseInt(document.getElementById('max-large-reactors').value);
+            }
             
             // Perform optimization
             let result;

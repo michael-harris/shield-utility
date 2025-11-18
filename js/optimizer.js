@@ -94,37 +94,70 @@ class ShieldOptimizer {
     determineOptimalStrategy(targetCapacity, targetRecharge, existingBlocks, existingCrew = {}) {
         const blockCapacity = this.calculator.calculateBlockCapacity(existingBlocks);
         const neededCapacity = Math.max(0, targetCapacity - blockCapacity);
-        
+
+        // Get ship-specific limits and components
+        const shipType = this.currentShipType;
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(shipType)
+            : { reactors: { small: 4, large: 2 }, extenders: { advanced: 4, improved: 6, basic: 8 } };
+
+        const availableGenerators = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getAvailableGenerators(shipType)
+            : ['compact', 'standard', 'advanced'];
+
+        // Use best available generator (usually 'advanced', but SV doesn't have 'compact')
+        const bestGenerator = availableGenerators.includes('advanced') ? 'advanced' : availableGenerators[availableGenerators.length - 1];
+
+        // Initialize power generators based on ship type
+        const shipComponents = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getComponents(shipType)
+            : null;
+
+        const powerGeneratorsInit = {};
+        if (shipComponents && shipComponents.powerGenerators) {
+            for (const genType in shipComponents.powerGenerators) {
+                powerGeneratorsInit[genType] = 0;
+            }
+        }
+
         const maxCapacityConfig = {
-            generator: 'advanced',
-            reactors: { small: 4, large: 2 },
+            generator: bestGenerator,
+            reactors: {
+                small: shipLimits.reactors.small || 0,
+                large: shipLimits.reactors.large || 0
+            },
+            powerGenerators: { ...powerGeneratorsInit },
             extenders: {
-                advanced: { capacitor: 4, charger: 0 },
-                improved: { capacitor: 6, charger: 0 },
-                basic: { capacitor: 8, charger: 0 }
+                advanced: { capacitor: shipLimits.extenders.advanced || 4, charger: 0 },
+                improved: { capacitor: shipLimits.extenders.improved || 6, charger: 0 },
+                basic: { capacitor: shipLimits.extenders.basic || 8, charger: 0 }
             },
             blocks: existingBlocks,
             crew: existingCrew
         };
-        
+
         const maxRechargeConfig = {
-            generator: 'advanced',
-            reactors: { small: 4, large: 2 },
+            generator: bestGenerator,
+            reactors: {
+                small: shipLimits.reactors.small || 0,
+                large: shipLimits.reactors.large || 0
+            },
+            powerGenerators: { ...powerGeneratorsInit },
             extenders: {
-                advanced: { capacitor: 0, charger: 4 },
-                improved: { capacitor: 0, charger: 6 },
-                basic: { capacitor: 0, charger: 8 }
+                advanced: { capacitor: 0, charger: shipLimits.extenders.advanced || 4 },
+                improved: { capacitor: 0, charger: shipLimits.extenders.improved || 6 },
+                basic: { capacitor: 0, charger: shipLimits.extenders.basic || 8 }
             },
             blocks: existingBlocks,
             crew: existingCrew
         };
-        
-        const maxCapacityStats = this.calculator.calculateStats(maxCapacityConfig);
-        const maxRechargeStats = this.calculator.calculateStats(maxRechargeConfig);
-        
+
+        const maxCapacityStats = this.calculator.calculateStats(maxCapacityConfig, shipType);
+        const maxRechargeStats = this.calculator.calculateStats(maxRechargeConfig, shipType);
+
         const capacityDemand = targetCapacity / maxCapacityStats.capacity;
         const rechargeDemand = targetRecharge / maxRechargeStats.recharge;
-        
+
         if (capacityDemand > 0.8 && rechargeDemand < 0.5) {
             return 'High Capacity';
         } else if (rechargeDemand > 0.8 && capacityDemand < 0.5) {
