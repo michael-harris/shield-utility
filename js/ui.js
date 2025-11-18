@@ -533,8 +533,8 @@ class UIController {
     // Update live stats for component-to-value mode
     updateLiveStats() {
         const config = this.getCurrentConfiguration();
-        const stats = this.calculator.calculateStats(config);
-        const validation = this.calculator.validateConfiguration(config);
+        const stats = this.calculator.calculateStats(config, this.currentShipType);
+        const validation = this.calculator.validateConfiguration(config, {}, this.currentShipType);
         
         // Update stat displays
         this.updateStatDisplay('live-capacity', stats.capacity, 'HP');
@@ -2022,7 +2022,7 @@ class UIController {
     findMostEfficient() {
         // Get current explorer configuration and stats
         const config = this.getCurrentConfiguration();
-        const stats = this.calculator.calculateStats(config);
+        const stats = this.calculator.calculateStats(config, this.currentShipType);
         
         // Check if we have a valid shield configuration
         if (!config.generator || config.generator === 'none' || stats.capacity <= 0 || stats.recharge <= 0) {
@@ -2377,7 +2377,7 @@ class UIController {
     // Export explorer configuration to self-contained HTML file
     exportExplorerConfiguration() {
         const config = this.getCurrentConfiguration();
-        const stats = this.calculator.calculateStats(config);
+        const stats = this.calculator.calculateStats(config, this.currentShipType);
         
         // Check if there are any components
         const hasComponents = config.generator !== 'none' || 
