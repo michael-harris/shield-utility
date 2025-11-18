@@ -204,6 +204,25 @@ class UIController {
 
     // Update UI elements based on ship type
     updateShipTypeUI(shipType) {
+        // Show/hide ship-specific sections
+        const cvOnlyElements = document.querySelectorAll('.ship-cv-only');
+        const svOnlyElements = document.querySelectorAll('.ship-sv-only');
+
+        if (shipType === 'SV') {
+            // Hide CV-only elements
+            cvOnlyElements.forEach(el => el.style.display = 'none');
+            // Show SV-only elements
+            svOnlyElements.forEach(el => el.style.display = '');
+        } else {
+            // Show CV-only elements
+            cvOnlyElements.forEach(el => el.style.display = '');
+            // Hide SV-only elements
+            svOnlyElements.forEach(el => el.style.display = 'none');
+        }
+
+        // Update shield generator dropdown based on ship type
+        this.updateGeneratorDropdown(shipType);
+
         // Hide/show XenoSteel blocks based on ship type
         const xenoSteelRow = document.querySelector('[data-block-type="xenoSteel"]');
         if (xenoSteelRow) {
@@ -228,6 +247,9 @@ class UIController {
             }
         }
 
+        // Reset power generator values when switching
+        this.resetPowerGeneratorValues(shipType);
+
         // Update constraint placeholders/limits based on ship type
         if (typeof ShipTypeUtils !== 'undefined') {
             const defaults = ShipTypeUtils.getDefaultConstraints(shipType);
@@ -244,6 +266,79 @@ class UIController {
                 maxLargeReactors.max = ComponentUtils.getReactorLimit('large', shipType);
             }
         }
+
+        // Update extender limit displays
+        this.updateExtenderLimitDisplays(shipType);
+    }
+
+    // Update generator dropdown based on ship type
+    updateGeneratorDropdown(shipType) {
+        const generatorSelect = document.getElementById('shield-generator-select');
+        if (!generatorSelect) return;
+
+        const availableGenerators = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getAvailableGenerators(shipType)
+            : ['compact', 'standard', 'advanced'];
+
+        // Store current selection
+        const currentValue = generatorSelect.value;
+
+        // Clear and rebuild options
+        generatorSelect.innerHTML = '<option value="none">None</option>';
+
+        availableGenerators.forEach(genType => {
+            const option = document.createElement('option');
+            option.value = genType;
+
+            // Set display names
+            const names = {
+                'compact': 'Compact Shield Generator',
+                'standard': 'Shield Generator',
+                'advanced': 'Advanced Shield Generator'
+            };
+            option.textContent = names[genType] || genType;
+            generatorSelect.appendChild(option);
+        });
+
+        // Restore selection if still valid, otherwise reset
+        if (availableGenerators.includes(currentValue)) {
+            generatorSelect.value = currentValue;
+        } else {
+            generatorSelect.value = 'none';
+        }
+    }
+
+    // Reset power generator values when switching ship types
+    resetPowerGeneratorValues(shipType) {
+        // Reset CV generators
+        const cvGenerators = ['basic-large-generators', 'improved-large-generators', 'advanced-large-generators', 'small-reactor-count', 'large-reactor-count'];
+        cvGenerators.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.value = '0';
+        });
+
+        // Reset SV generators
+        const svGenerators = ['sv-basic-small-generators', 'sv-improved-small-generators', 'sv-advanced-small-generators', 'sv-fusion-generators'];
+        svGenerators.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.value = '0';
+        });
+    }
+
+    // Update extender limit displays
+    updateExtenderLimitDisplays(shipType) {
+        const limits = {
+            advanced: ComponentUtils.getTierLimit('advanced', shipType),
+            improved: ComponentUtils.getTierLimit('improved', shipType),
+            basic: ComponentUtils.getTierLimit('basic', shipType)
+        };
+
+        Object.keys(limits).forEach(tier => {
+            const limitSpan = document.getElementById(`${tier}-limit`);
+            if (limitSpan) {
+                limitSpan.textContent = limits[tier];
+            }
+        });
     }
 
     // Clear calculator results
@@ -522,29 +617,46 @@ class UIController {
     // Get current configuration from UI
     getCurrentConfiguration() {
         const config = this.calculator.createEmptyConfiguration();
-        
+
         // Generator
         const generatorSelect = document.getElementById('shield-generator-select');
         if (generatorSelect) {
             config.generator = generatorSelect.value;
         }
-        
-        // Power Generators
-        config.powerGenerators = {
-            basicLarge: parseInt(document.getElementById('basic-large-generators')?.value) || 0,
-            improvedLarge: parseInt(document.getElementById('improved-large-generators')?.value) || 0,
-            advancedLarge: parseInt(document.getElementById('advanced-large-generators')?.value) || 0
-        };
-        
-        // Reactors
-        const smallReactorSelect = document.getElementById('small-reactor-count');
-        if (smallReactorSelect) {
-            config.reactors.small = parseInt(smallReactorSelect.value) || 0;
-        }
-        
-        const largeReactorSelect = document.getElementById('large-reactor-count');
-        if (largeReactorSelect) {
-            config.reactors.large = parseInt(largeReactorSelect.value) || 0;
+
+        // Power Generators & Reactors (ship-type specific)
+        if (this.currentShipType === 'SV') {
+            // SV uses small generators and fusion generator
+            config.powerGenerators = {
+                basicSmall: parseInt(document.getElementById('sv-basic-small-generators')?.value) || 0,
+                improvedSmall: parseInt(document.getElementById('sv-improved-small-generators')?.value) || 0,
+                advancedSmall: parseInt(document.getElementById('sv-advanced-small-generators')?.value) || 0,
+                fusion: parseInt(document.getElementById('sv-fusion-generators')?.value) || 0
+            };
+
+            // SV has no reactors
+            config.reactors = {
+                small: 0,
+                large: 0
+            };
+        } else {
+            // CV uses large generators and fusion reactors
+            config.powerGenerators = {
+                basicLarge: parseInt(document.getElementById('basic-large-generators')?.value) || 0,
+                improvedLarge: parseInt(document.getElementById('improved-large-generators')?.value) || 0,
+                advancedLarge: parseInt(document.getElementById('advanced-large-generators')?.value) || 0
+            };
+
+            // CV Reactors
+            const smallReactorSelect = document.getElementById('small-reactor-count');
+            if (smallReactorSelect) {
+                config.reactors.small = parseInt(smallReactorSelect.value) || 0;
+            }
+
+            const largeReactorSelect = document.getElementById('large-reactor-count');
+            if (largeReactorSelect) {
+                config.reactors.large = parseInt(largeReactorSelect.value) || 0;
+            }
         }
         
         // Extenders

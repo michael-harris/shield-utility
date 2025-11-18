@@ -486,11 +486,11 @@
                                 </div>
                             </div>
 
-                            <!-- Generators -->
-                            <div class="box" id="generators-box">
+                            <!-- CV Power Generators & Reactors -->
+                            <div class="box ship-cv-only" id="generators-box">
                                 <h2 class="title is-4">
                                     <img src="images/basic-large-generator.png" alt="Generator" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
-                                    Generators
+                                    Power Sources
                                 </h2>
                                 <div class="columns is-multiline">
                                     <div class="column is-half">
@@ -596,6 +596,90 @@
                                             <div class="control">
                                                 <div class="select is-fullwidth">
                                                     <select id="large-reactor-count">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SV Power Generators -->
+                            <div class="box ship-sv-only" id="sv-generators-box" style="display: none;">
+                                <h2 class="title is-4">
+                                    <img src="images/basic-large-generator.png" alt="Generator" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
+                                    Power Generators
+                                </h2>
+                                <div class="columns is-multiline">
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/basic-large-generator.png" alt="Basic Small Generator" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Basic Small Generators
+                                            </label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="sv-basic-small-generators" class="generator-input" data-generator-type="basicSmall">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/improved-large-generator.png" alt="Improved Small Generator" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Improved Small Generators
+                                            </label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="sv-improved-small-generators" class="generator-input" data-generator-type="improvedSmall">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/advanced-large-generator.png" alt="Advanced Small Generator" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Advanced Small Generators
+                                            </label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="sv-advanced-small-generators" class="generator-input" data-generator-type="advancedSmall">
+                                                        <option value="0">0</option>
+                                                        <option value="1">1</option>
+                                                        <option value="2">2</option>
+                                                        <option value="3">3</option>
+                                                        <option value="4">4</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column is-half">
+                                        <div class="field">
+                                            <label class="label">
+                                                <img src="images/small-fusion-reactor.png" alt="Fusion Generator" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
+                                                Fusion Generators
+                                            </label>
+                                            <div class="control">
+                                                <div class="select is-fullwidth">
+                                                    <select id="sv-fusion-generators" class="generator-input" data-generator-type="fusion">
                                                         <option value="0">0</option>
                                                         <option value="1">1</option>
                                                         <option value="2">2</option>
