@@ -499,16 +499,30 @@ class ShieldOptimizer {
     
     // Fallback exhaustive search method
     optimizeExhaustive(targetCapacity, targetRecharge, constraints, existingBlocks, existingCrew = {}) {
-        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : 4;
-        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : 6;
-        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : 8;
-        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 2;
-        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 1;
-        
+        // Get ship-specific defaults
+        const shipType = constraints.shipType || this.currentShipType;
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(shipType)
+            : { reactors: { small: 4, large: 2 }, extenders: { advanced: 4, improved: 6, basic: 8 } };
+
+        const availableGenerators = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getAvailableGenerators(shipType)
+            : ['compact', 'standard', 'advanced'];
+
+        const shipComponents = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getComponents(shipType)
+            : null;
+
+        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : (shipLimits.extenders.advanced || 4);
+        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : (shipLimits.extenders.improved || 6);
+        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : (shipLimits.extenders.basic || 8);
+        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : (shipLimits.reactors.small || 0);
+        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : (shipLimits.reactors.large || 0);
+
         let bestConfig = null;
         let bestScore = -1;
-        
-        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : ['compact', 'standard', 'advanced'];
+
+        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : availableGenerators;
         
         for (const generatorType of generatorTypes) {
             const reactorConfigs = (maxSmallReactors === 0 && maxLargeReactors === 0) ? [[0, 0]] : [];
@@ -522,51 +536,48 @@ class ShieldOptimizer {
             }
             
             for (const [smallReactors, largeReactors] of reactorConfigs) {
-                const maxPowerGens = 4;
-                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
-                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
-                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
-                            continue;
-                        }
-                        
-                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
-                            for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
-                                for (let impCap = 0; impCap <= maxImproved; impCap++) {
-                                    for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
-                                        for (let basCap = 0; basCap <= maxBasic; basCap++) {
-                                            for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+                // Initialize ship-specific power generators structure (all zeros for shield-only configs)
+                const powerGeneratorsInit = {};
+                if (shipComponents && shipComponents.powerGenerators) {
+                    for (const genType in shipComponents.powerGenerators) {
+                        powerGeneratorsInit[genType] = 0;
+                    }
+                }
+
+                // Exhaustive search through extender configurations
+                for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                    for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
+                        for (let impCap = 0; impCap <= maxImproved; impCap++) {
+                            for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
+                                for (let basCap = 0; basCap <= maxBasic; basCap++) {
+                                    for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+
+                                        const config = {
+                                            generator: generatorType,
+                                            reactors: { small: smallReactors, large: largeReactors },
+                                            powerGenerators: { ...powerGeneratorsInit },
+                                            extenders: {
+                                                advanced: { capacitor: advCap, charger: advChg },
+                                                improved: { capacitor: impCap, charger: impChg },
+                                                basic: { capacitor: basCap, charger: basChg }
+                                            },
+                                            blocks: { ...existingBlocks },
+                                            crew: { ...existingCrew }
+                                        };
+
+                                        const stats = this.calculator.calculateStats(config, shipType);
                                                 
-                                                const config = {
-                                                    generator: generatorType,
-                                                    reactors: { small: smallReactors, large: largeReactors },
-                                                    powerGenerators: {
-                                                        advancedLarge: advancedGens,
-                                                        improvedLarge: improvedGens
-                                                    },
-                                                    extenders: {
-                                                        advanced: { capacitor: advCap, charger: advChg },
-                                                        improved: { capacitor: impCap, charger: impChg },
-                                                        basic: { capacitor: basCap, charger: basChg }
-                                                    },
-                                                    blocks: { ...existingBlocks },
-                                                    crew: { ...existingCrew }
-                                                };
-                                                
-                                                const stats = this.calculator.calculateStats(config);
-                                                
-                                                const meetsCapacity = !targetCapacity || this.isWithinTolerance(stats.capacity, targetCapacity);
-                                                const meetsRecharge = !targetRecharge || this.isWithinTolerance(stats.recharge, targetRecharge);
-                                                
-                                                if (meetsCapacity && meetsRecharge) {
-                                                    const validation = this.calculator.validateConfiguration(config, constraints);
-                                                    
-                                                    if (validation.valid) {
-                                                        const score = 1000000 - stats.cpu;
-                                                        if (score > bestScore) {
-                                                            bestScore = score;
-                                                            bestConfig = { config, stats, validation };
-                                                        }
-                                                    }
+                                        const meetsCapacity = !targetCapacity || this.isWithinTolerance(stats.capacity, targetCapacity);
+                                        const meetsRecharge = !targetRecharge || this.isWithinTolerance(stats.recharge, targetRecharge);
+
+                                        if (meetsCapacity && meetsRecharge) {
+                                            const validation = this.calculator.validateConfiguration(config, constraints, shipType);
+
+                                            if (validation.valid) {
+                                                const score = 1000000 - stats.cpu;
+                                                if (score > bestScore) {
+                                                    bestScore = score;
+                                                    bestConfig = { config, stats, validation };
                                                 }
                                             }
                                         }
@@ -656,16 +667,30 @@ class ShieldOptimizer {
     }
     
     findMaxCapacityConstrained(minRechargeTime, maxRechargeTime, constraints = {}, existingBlocks = {}, existingCrew = {}, strategyName) {
-        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : 4;
-        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : 6;
-        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : 8;
-        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : 2;
-        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : 1;
-        
+        // Get ship-specific defaults
+        const shipType = constraints.shipType || this.currentShipType;
+        const shipLimits = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getLimits(shipType)
+            : { reactors: { small: 4, large: 2 }, extenders: { advanced: 4, improved: 6, basic: 8 } };
+
+        const availableGenerators = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getAvailableGenerators(shipType)
+            : ['compact', 'standard', 'advanced'];
+
+        const shipComponents = typeof ShipTypeUtils !== 'undefined'
+            ? ShipTypeUtils.getComponents(shipType)
+            : null;
+
+        const maxAdvanced = constraints.maxAdvancedExtenders !== undefined ? constraints.maxAdvancedExtenders : (shipLimits.extenders.advanced || 4);
+        const maxImproved = constraints.maxImprovedExtenders !== undefined ? constraints.maxImprovedExtenders : (shipLimits.extenders.improved || 6);
+        const maxBasic = constraints.maxBasicExtenders !== undefined ? constraints.maxBasicExtenders : (shipLimits.extenders.basic || 8);
+        const maxSmallReactors = constraints.maxSmallReactors !== undefined ? constraints.maxSmallReactors : (shipLimits.reactors.small || 0);
+        const maxLargeReactors = constraints.maxLargeReactors !== undefined ? constraints.maxLargeReactors : (shipLimits.reactors.large || 0);
+
         let bestConfig = null;
         let bestCapacity = -1;
-        
-        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : ['compact', 'standard', 'advanced'];
+
+        const generatorTypes = constraints.generatorType ? [constraints.generatorType] : availableGenerators;
         
         for (const generatorType of generatorTypes) {
             // Generate all possible reactor configurations
@@ -684,63 +709,57 @@ class ShieldOptimizer {
             }
             
             for (const [smallReactors, largeReactors] of reactorConfigs) {
-                // Try all possible power generator configurations if considering power
-                const maxPowerGens = constraints.considerPowerUsage ? 4 : 0;
-                for (let advancedGens = 0; advancedGens <= maxPowerGens; advancedGens++) {
-                    for (let improvedGens = 0; improvedGens <= maxPowerGens; improvedGens++) {
-                        if ((smallReactors > 0 || largeReactors > 0) && (advancedGens > 0 || improvedGens > 0)) {
-                            continue; // Don't mix reactors and generators
-                        }
-                        
-                        // Try all possible extender configurations
-                        for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
-                            for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
-                                for (let impCap = 0; impCap <= maxImproved; impCap++) {
-                                    for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
-                                        for (let basCap = 0; basCap <= maxBasic; basCap++) {
-                                            for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
-                                                
-                                                const config = {
-                                                    generator: generatorType,
-                                                    reactors: { small: smallReactors, large: largeReactors },
-                                                    powerGenerators: {
-                                                        advancedLarge: advancedGens,
-                                                        improvedLarge: improvedGens,
-                                                        basicLarge: 0
-                                                    },
-                                                    extenders: {
-                                                        advanced: { capacitor: advCap, charger: advChg },
-                                                        improved: { capacitor: impCap, charger: impChg },
-                                                        basic: { capacitor: basCap, charger: basChg }
-                                                    },
-                                                    blocks: { ...existingBlocks },
-                                                    crew: { ...existingCrew }
-                                                };
-                                                
-                                                const stats = this.calculator.calculateStats(config);
-                                                
-                                                // Check if recharge is positive and meets recharge time constraint
-                                                if (stats.recharge <= 0) continue;
-                                                
-                                                const rechargeTime = stats.capacity / stats.recharge;
-                                                if (rechargeTime < minRechargeTime || rechargeTime > maxRechargeTime) continue;
-                                                
-                                                // Validate against constraints
-                                                const validation = this.calculator.validateConfiguration(config, constraints);
-                                                if (!validation.valid && validation.warnings.some(w => w.type === 'cpu' || w.type === 'power')) {
-                                                    continue; // Skip if it violates hard constraints
-                                                }
-                                                
-                                                // Check if this has higher capacity than current best
-                                                if (stats.capacity > bestCapacity) {
-                                                    bestCapacity = stats.capacity;
-                                                    bestConfig = {
-                                                        config: config,
-                                                        stats: stats,
-                                                        validation: validation
-                                                    };
-                                                }
-                                            }
+                // Initialize ship-specific power generators structure (all zeros for shield-only configs)
+                const powerGeneratorsInit = {};
+                if (shipComponents && shipComponents.powerGenerators) {
+                    for (const genType in shipComponents.powerGenerators) {
+                        powerGeneratorsInit[genType] = 0;
+                    }
+                }
+
+                // Try all possible extender configurations
+                for (let advCap = 0; advCap <= maxAdvanced; advCap++) {
+                    for (let advChg = 0; advChg <= maxAdvanced - advCap; advChg++) {
+                        for (let impCap = 0; impCap <= maxImproved; impCap++) {
+                            for (let impChg = 0; impChg <= maxImproved - impCap; impChg++) {
+                                for (let basCap = 0; basCap <= maxBasic; basCap++) {
+                                    for (let basChg = 0; basChg <= maxBasic - basCap; basChg++) {
+
+                                        const config = {
+                                            generator: generatorType,
+                                            reactors: { small: smallReactors, large: largeReactors },
+                                            powerGenerators: { ...powerGeneratorsInit },
+                                            extenders: {
+                                                advanced: { capacitor: advCap, charger: advChg },
+                                                improved: { capacitor: impCap, charger: impChg },
+                                                basic: { capacitor: basCap, charger: basChg }
+                                            },
+                                            blocks: { ...existingBlocks },
+                                            crew: { ...existingCrew }
+                                        };
+
+                                        const stats = this.calculator.calculateStats(config, shipType);
+
+                                        // Check if recharge is positive and meets recharge time constraint
+                                        if (stats.recharge <= 0) continue;
+
+                                        const rechargeTime = stats.capacity / stats.recharge;
+                                        if (rechargeTime < minRechargeTime || rechargeTime > maxRechargeTime) continue;
+
+                                        // Validate against constraints
+                                        const validation = this.calculator.validateConfiguration(config, constraints, shipType);
+                                        if (!validation.valid && validation.warnings.some(w => w.type === 'cpu' || w.type === 'power')) {
+                                            continue; // Skip if it violates hard constraints
+                                        }
+
+                                        // Check if this has higher capacity than current best
+                                        if (stats.capacity > bestCapacity) {
+                                            bestCapacity = stats.capacity;
+                                            bestConfig = {
+                                                config: config,
+                                                stats: stats,
+                                                validation: validation
+                                            };
                                         }
                                     }
                                 }
