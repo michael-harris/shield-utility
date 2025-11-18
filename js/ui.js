@@ -269,6 +269,9 @@ class UIController {
 
         // Update extender limit displays
         this.updateExtenderLimitDisplays(shipType);
+
+        // Update extender constraint dropdowns to reflect ship-specific limits
+        this.updateExtenderConstraintDropdowns(shipType);
     }
 
     // Update generator dropdown based on ship type
@@ -337,6 +340,44 @@ class UIController {
             const limitSpan = document.getElementById(`${tier}-limit`);
             if (limitSpan) {
                 limitSpan.textContent = limits[tier];
+            }
+        });
+    }
+
+    // Update extender constraint dropdowns based on ship type
+    updateExtenderConstraintDropdowns(shipType) {
+        const limits = {
+            advanced: ComponentUtils.getTierLimit('advanced', shipType),
+            improved: ComponentUtils.getTierLimit('improved', shipType),
+            basic: ComponentUtils.getTierLimit('basic', shipType)
+        };
+
+        // Update each extender constraint dropdown
+        Object.keys(limits).forEach(tier => {
+            const selectId = `max-${tier}-extenders`;
+            const select = document.getElementById(selectId);
+            if (!select) return;
+
+            const currentValue = parseInt(select.value);
+            const tierLimit = limits[tier];
+
+            // Rebuild options
+            select.innerHTML = '';
+            for (let i = tierLimit; i >= 0; i--) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i === tierLimit ? `${i} (Default)` : i;
+                if (i === tierLimit) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            }
+
+            // Try to restore previous value if it's within the new limit
+            if (currentValue <= tierLimit) {
+                select.value = currentValue;
+            } else {
+                select.value = tierLimit;
             }
         });
     }

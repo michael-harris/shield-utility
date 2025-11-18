@@ -168,7 +168,7 @@
                                         <input class="input block-input" type="number" id="combat-steel-blocks" min="0" value="0" data-capacity="4">
                                     </div>
                                 </div>
-                                <div class="field">
+                                <div class="field ship-cv-only">
                                     <label class="label">
                                         <img src="images/xenosteel-block.png" alt="XenoSteel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
                                         XenoSteel Blocks (7 HP each)
@@ -180,7 +180,7 @@
                             </div>
 
                             <!-- Crew -->
-                            <div class="box">
+                            <div class="box ship-cv-only">
                                 <h2 class="title is-4">
                                     <img src="images/shield-technician.png" alt="Crew" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
                                     Crew
@@ -312,7 +312,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="field">
+                                <div class="field ship-cv-only">
                                     <label class="label">Max Small Fusion Reactors</label>
                                     <div class="control">
                                         <div class="select is-fullwidth">
@@ -326,11 +326,25 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="field">
+                                <div class="field ship-cv-only">
                                     <label class="label">Max Large Fusion Reactors</label>
                                     <div class="control">
                                         <div class="select is-fullwidth">
                                             <select id="max-large-reactors">
+                                                <option value="2">2</option>
+                                                <option value="1" selected>1 (Default)</option>
+                                                <option value="0">0</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field ship-sv-only" style="display: none;">
+                                    <label class="label">Max Fusion Generators</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="max-fusion-generators">
+                                                <option value="4">4</option>
+                                                <option value="3">3</option>
                                                 <option value="2">2</option>
                                                 <option value="1" selected>1 (Default)</option>
                                                 <option value="0">0</option>
@@ -841,7 +855,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="column is-half">
+                                    <div class="column is-half ship-cv-only">
                                         <div class="field">
                                             <label class="label">
                                                 <img src="images/xenosteel-block.png" alt="XenoSteel Block" style="width: 20px; height: 20px; margin-right: 0.25rem; vertical-align: middle;">
@@ -856,7 +870,7 @@
                             </div>
                             
                             <!-- Crew -->
-                            <div class="box" id="crew-box">
+                            <div class="box ship-cv-only" id="crew-box">
                                 <h2 class="title is-4">
                                     <img src="images/shield-technician.png" alt="Crew" style="width: 32px; height: 32px; margin-right: 0.5rem; vertical-align: middle;">
                                     Crew
