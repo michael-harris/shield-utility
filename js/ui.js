@@ -1475,23 +1475,23 @@ class UIController {
     updateInventory(config, stats) {
         const inventoryContent = document.getElementById('inventory-content');
         if (!inventoryContent) return;
-        
+
         let html = '';
         let totalComponents = 0;
-        
+
         // Generator
         if (config.generator && config.generator !== 'none') {
-            const gen = ComponentUtils.getComponent('generators', config.generator);
+            const gen = ComponentUtils.getComponent('generators', config.generator, this.currentShipType);
             html += this.createInventoryItem(gen, 1);
             totalComponents++;
         }
-        
+
         // Power Generators
         if (config.powerGenerators) {
             for (const genType in config.powerGenerators) {
                 const count = config.powerGenerators[genType];
                 if (count > 0) {
-                    const gen = ComponentUtils.getComponent('powerGenerators', genType);
+                    const gen = ComponentUtils.getComponent('powerGenerators', genType, this.currentShipType);
                     if (gen) {
                         html += this.createInventoryItem(gen, count);
                         totalComponents += count;
@@ -1499,35 +1499,35 @@ class UIController {
                 }
             }
         }
-        
+
         // Reactors
         if (config.reactors.small > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'small');
+            const reactor = ComponentUtils.getComponent('reactors', 'small', this.currentShipType);
             html += this.createInventoryItem(reactor, config.reactors.small);
             totalComponents += config.reactors.small;
         }
-        
+
         if (config.reactors.large > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'large');
+            const reactor = ComponentUtils.getComponent('reactors', 'large', this.currentShipType);
             html += this.createInventoryItem(reactor, config.reactors.large);
             totalComponents += config.reactors.large;
         }
-        
+
         // Extenders
         for (const tier in config.extenders) {
             if (config.extenders[tier].capacitor > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).capacitor;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).capacitor;
                 html += this.createInventoryItem(component, config.extenders[tier].capacitor);
                 totalComponents += config.extenders[tier].capacitor;
             }
-            
+
             if (config.extenders[tier].charger > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).charger;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).charger;
                 html += this.createInventoryItem(component, config.extenders[tier].charger);
                 totalComponents += config.extenders[tier].charger;
             }
         }
-        
+
         if (totalComponents === 0) {
             html = '<div class="notification is-info is-light"><p>Select components to see your build here</p></div>';
         } else {
@@ -1537,30 +1537,30 @@ class UIController {
                 </div>
             ` + html;
         }
-        
+
         inventoryContent.innerHTML = html;
-        
+
         // Update explorer bonuses box
         this.updateExplorerBonuses(config);
-        
+
         // Export actions box is now always visible - buttons are enabled/disabled instead
     }
-    
+
     // Update Explorer Bonuses box
     updateExplorerBonuses(config) {
         const explorerBonusesContent = document.getElementById('explorer-included-bonuses-content');
         if (!explorerBonusesContent) return;
-        
+
         let html = '';
         let totalBonusCapacity = 0;
         let totalBonusRecharge = 0;
-        
+
         // Blocks
         if (config.blocks) {
             for (const blockType in config.blocks) {
                 const count = config.blocks[blockType];
                 if (count > 0) {
-                    const block = ComponentUtils.getComponent('blocks', blockType);
+                    const block = ComponentUtils.getComponent('blocks', blockType, this.currentShipType);
                     if (block) {
                         html += this.createInventoryItem(block, count);
                         totalBonusCapacity += block.capacity * count;
@@ -1569,10 +1569,10 @@ class UIController {
                 }
             }
         }
-        
+
         // Crew
         if (config.crew && config.crew.shieldTechnicians > 0) {
-            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician');
+            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician', this.currentShipType);
             if (crew) {
                 html += this.createInventoryItem(crew, config.crew.shieldTechnicians);
                 totalBonusCapacity += crew.capacity * config.crew.shieldTechnicians;
@@ -2106,43 +2106,43 @@ class UIController {
         
         // Generator
         if (config.generator && config.generator !== 'none') {
-            const generator = ComponentUtils.getComponent('generators', config.generator);
+            const generator = ComponentUtils.getComponent('generators', config.generator, this.currentShipType);
             html += this.createComponentCard(generator, 1);
         }
-        
+
         // Power Generators
         if (config.powerGenerators) {
             for (const genType in config.powerGenerators) {
                 const count = config.powerGenerators[genType];
                 if (count > 0) {
-                    const gen = ComponentUtils.getComponent('powerGenerators', genType);
+                    const gen = ComponentUtils.getComponent('powerGenerators', genType, this.currentShipType);
                     if (gen) {
                         html += this.createComponentCard(gen, count);
                     }
                 }
             }
         }
-        
+
         // Reactors
         if (config.reactors.small > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'small');
+            const reactor = ComponentUtils.getComponent('reactors', 'small', this.currentShipType);
             html += this.createComponentCard(reactor, config.reactors.small);
         }
-        
+
         if (config.reactors.large > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'large');
+            const reactor = ComponentUtils.getComponent('reactors', 'large', this.currentShipType);
             html += this.createComponentCard(reactor, config.reactors.large);
         }
-        
+
         // Extenders
         for (const tier in config.extenders) {
             if (config.extenders[tier].capacitor > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).capacitor;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).capacitor;
                 html += this.createComponentCard(component, config.extenders[tier].capacitor);
             }
-            
+
             if (config.extenders[tier].charger > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).charger;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).charger;
                 html += this.createComponentCard(component, config.extenders[tier].charger);
             }
         }
@@ -2257,7 +2257,7 @@ class UIController {
             for (const blockType in config.blocks) {
                 const count = config.blocks[blockType];
                 if (count > 0) {
-                    const block = ComponentUtils.getComponent('blocks', blockType);
+                    const block = ComponentUtils.getComponent('blocks', blockType, this.currentShipType);
                     if (block) {
                         html += this.createComponentCard(block, count);
                         totalBonusCapacity += block.capacity * count;
@@ -2266,10 +2266,10 @@ class UIController {
                 }
             }
         }
-        
+
         // Crew
         if (config.crew && config.crew.shieldTechnicians > 0) {
-            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician');
+            const crew = ComponentUtils.getComponent('crew', 'shieldTechnician', this.currentShipType);
             if (crew) {
                 html += this.createComponentCard(crew, config.crew.shieldTechnicians);
                 totalBonusCapacity += crew.capacity * config.crew.shieldTechnicians;
@@ -2533,41 +2533,41 @@ class UIController {
     // Build simple component table for export
     buildSimpleComponentTable(config) {
         const components = [];
-        
+
         // Generator
         if (config.generator && config.generator !== 'none') {
-            const gen = ComponentUtils.getComponent('generators', config.generator);
+            const gen = ComponentUtils.getComponent('generators', config.generator, this.currentShipType);
             if (gen) components.push({ name: gen.name, quantity: 1 });
         }
-        
+
         // Power Generators
         if (config.powerGenerators) {
             for (const [type, count] of Object.entries(config.powerGenerators)) {
                 if (count > 0) {
-                    const gen = ComponentUtils.getComponent('powerGenerators', type);
+                    const gen = ComponentUtils.getComponent('powerGenerators', type, this.currentShipType);
                     if (gen) components.push({ name: gen.name, quantity: count });
                 }
             }
         }
-        
+
         // Reactors
         if (config.reactors.small > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'small');
+            const reactor = ComponentUtils.getComponent('reactors', 'small', this.currentShipType);
             if (reactor) components.push({ name: reactor.name, quantity: config.reactors.small });
         }
         if (config.reactors.large > 0) {
-            const reactor = ComponentUtils.getComponent('reactors', 'large');
+            const reactor = ComponentUtils.getComponent('reactors', 'large', this.currentShipType);
             if (reactor) components.push({ name: reactor.name, quantity: config.reactors.large });
         }
-        
+
         // Extenders
         for (const tier in config.extenders) {
             if (config.extenders[tier].capacitor > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).capacitor;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).capacitor;
                 components.push({ name: component.name, quantity: config.extenders[tier].capacitor });
             }
             if (config.extenders[tier].charger > 0) {
-                const component = ComponentUtils.getComponent('extenders', tier).charger;
+                const component = ComponentUtils.getComponent('extenders', tier, this.currentShipType).charger;
                 components.push({ name: component.name, quantity: config.extenders[tier].charger });
             }
         }
@@ -2602,7 +2602,7 @@ class UIController {
         if (config.blocks) {
             for (const [type, count] of Object.entries(config.blocks)) {
                 if (count > 0) {
-                    const block = ComponentUtils.getComponent('blocks', type);
+                    const block = ComponentUtils.getComponent('blocks', type, this.currentShipType);
                     if (block) {
                         bonuses.push({ name: block.name, quantity: count });
                         totalBonusCapacity += block.capacity * count;
@@ -2611,12 +2611,12 @@ class UIController {
                 }
             }
         }
-        
+
         // Crew
         if (config.crew) {
             for (const [type, count] of Object.entries(config.crew)) {
                 if (count > 0) {
-                    const crewMember = ComponentUtils.getComponent('crew', type);
+                    const crewMember = ComponentUtils.getComponent('crew', type, this.currentShipType);
                     if (crewMember) {
                         bonuses.push({ name: crewMember.name, quantity: count });
                         totalBonusCapacity += crewMember.capacity * count;
